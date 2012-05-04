@@ -1,0 +1,185 @@
+v1.0.22
+ o Fix potential garbage ret from ssl_x509_ext_tostr (5a29cf5 Mark Ellzey)
+
+v1.0.21
+ o Fixed an assert logic error. (b711410 Mark Ellzey)
+
+v1.0.19
+ o Log before write. (3a00ff9 Mark Ellzey)
+ o Error handling refactoring, new logging formats, and much more, see full commit log. (c20e8bd Mark Ellzey)
+ o Cleanup - Updated documentation for new log formats. (ad0cc31 Mark Ellzey)
+ o Require use of libevhtp v0.4.12 or higher. (6033ba0 Mark Ellzey)
+ o Updating API docs. (ef1b46a Mark Ellzey)
+ o Make sure we use libevhtp-v0.4.13 (ccbbaaf Mark Ellzey)
+ o Prep release v1.0.20. (606bcb0 Mark Ellzey)
+
+v1.0.18
+ o Force pending timeout on requests in the high-watermark wait phase. (26fd21e Mark Ellzey)
+ o delete the pending_ev if the writecb is called. (6901add Mark Ellzey)
+ o Added high-watermark-timeout config option for timing out dead downstreams when a high-watermark is hit. Additionally added functionality to stagger pending timers to stop huge bursts of timeouts. (1a8baf6 Mark Ellzey)
+ o Last commit was buggy, adding some debug msgs. (538ed54 Mark Ellzey)
+ o More debug. (e0e878a Mark Ellzey)
+ o Unset hooks on timeout. (2f03648 Mark Ellzey)
+ o Fixes (82d5ccd Mark Ellzey)
+ o More debug info. (8527eab Mark Ellzey)
+ o derp (641502c Mark Ellzey)
+ o fjkdsla (cd2ffd3 Mark Ellzey)
+ o More. (bbe92a1 Mark Ellzey)
+ o updates (51c635d Mark Ellzey)
+ o Apply read/write timeouts to downstreams too. (42fc67a Mark Ellzey)
+ o per-downstream read/write timeouts. (8dd4a28 Mark Ellzey)
+ o Set default build-type to Release. (546d1b6 Mark Ellzey)
+ o Adding Apache2.0 license to all source. (773c902 Mark Ellzey)
+ o Updating documentation. (585a765 Mark Ellzey)
+ o Updated documentation on setting file limits. (c387e12 Mark Ellzey)
+ o send_upstream_* now handles errors gracefully. (b607209 Mark Ellzey)
+ o Fixing up sample.cfg (cc4bea2 Mark Ellzey)
+ o Making NDEBUG == RPROXY_DEBUG (4ed028d Mark Ellzey)
+ o Adding source port information for connected downstream sockets. (937ce7a Mark Ellzey)
+ o Adding a more verbose event error log. (2bedd9c Mark Ellzey)
+ o New req logging fmts for up/downstream src ports. (cf5b2da Mark Ellzey)
+ o Prep release v1.0.19 (106b2d5 Mark Ellzey)
+
+v1.0.17
+ o Pending timers now staggered, avoiding bursts. (5fbf068 Mark Ellzey)
+ o Replaced high-watermark-timeout with downstream r/w timeouts. (e4c9d3e Mark Ellzey)
+ o per-downstream read/write timeouts. (9c8cccb Mark Ellzey)
+ o Updating documentation for new config options. (85d1611 Mark Ellzey)
+ o Set default build-type to Release. (3ec8caa Mark Ellzey)
+ o Adding Apache2.0 license to all source. (3f0044b Mark Ellzey)
+ o Prep release v1.0.18 (08c458a Mark Ellzey)
+
+v1.0.16
+ o Added max-nofile config for setting max file open fd's. Updated documentation. (bc2d422 Mark Ellzey)
+ o Fixed memory leak in ssl_x509_ext_tostr() (3503944 Mark Ellzey)
+ o Prep release v1.0.17 (5601da1 Mark Ellzey)
+
+v1.0.15
+ o Only display downstream down logs if the previous state was NOT down. (8b80172 Mark Ellzey)
+ o Added more restrictive error logging for socket errors. (ba1f386 Mark Ellzey)
+ o Prep release v1.0.16 (003542d Mark Ellzey)
+
+v1.0.14
+ o Fixed bug in round-robin lb-method where if a wrap occurs, it does not check to see if it has any idle connections to use. This would potentially never return an idle connection if one goes down. (c43d370 Mark Ellzey)
+ o Prep release v1.0.15 (8041d2c Mark Ellzey)
+
+v1.0.13
+ o Add port to X-Forwarded-For.  Support IPv6. (1b17c0c Sean Cunningham)
+ o Fix formatting and host order. (560bfb4 Sean Cunningham)
+ o Moar logging fixes (6f40145 Stephen Cox)
+ o Format cleanup (9405368 Mark Ellzey)
+ o Initial commit of different load-balancing methods. (4923249 Mark Ellzey)
+ o Added round-robin lb method; Removed "ping" stuff as it is just an extra layer of complexity which won't be used. Updated documentation to reflect these changes. (02a27ee Mark Ellzey)
+ o Cleaning up unused code. (610ec3e Mark Ellzey)
+ o Formatting cleanup. (0caa904 Mark Ellzey)
+ o Added smoke tests for round-robin functionality + updated unit-tests + minor bugfixes (d9ee51b Mark Ellzey)
+ o updated sample.cfg to use lb-method = roundrobin (97934e9 Mark Ellzey)
+ o Added lb-method none, which simply chooses the the first available connection without any calculations. (7eaddc5 Mark Ellzey)
+ o Fixed smoke test to not use 'seq' command. (ddbed8d Mark Ellzey)
+ o Prepping release v1.0.14 (1192938 Mark Ellzey)
+
+v1.0.12
+ o Fixed issue where request_free() was called before error logging. (74cdc44 Mark Ellzey)
+ o Prep release v1.0.13 (0d8cf12 Mark Ellzey)
+
+v1.0.11
+ o Updating the README documentation. (152e8c0 Mark Ellzey)
+ o Add error log helper for including the request in the logs; Minor tweak to smoke test build. (81ec5a5 Stephen Cox)
+ o Cleanup - some error checking additions. (fbaaa9a Mark Ellzey)
+ o Removed unnecessary newlines from error logging. (43496f4 Mark Ellzey)
+ o Prepping release v1.0.12 (6f2d3d9 Mark Ellzey)
+
+v1.0.10
+ o Don't use mallopt on systems without it. (2f91c7d Mark Ellzey)
+ o Fixes for strn* functions not avail on system. (4f60c91 Mark Ellzey)
+ o Prepping v1.0.11 (809393e Mark Ellzey)
+
+v1.0.9
+ o Fixed comparison error. (3b83c21 Mark Ellzey)
+ o Upping version (0ce2635 Mark Ellzey)
+
+v1.0.8
+ o Added upstream_pre_accept to close a connection before SSL handshake if the backlog is full. (4aa401b Mark Ellzey)
+ o smoke_backend cleanups (3bb1b88 Mark Ellzey)
+ o Fixup for checking pending count. (d4cb39e Mark Ellzey)
+ o Added libevhtp version to output. (ae6adf3 Mark Ellzey)
+ o Added some extra debug logging. (117d65d Mark Ellzey)
+ o More debug logging. (20738a6 Mark Ellzey)
+ o even more debug logging. (6f7a513 Mark Ellzey)
+ o even more debug logging. (53f4305 Mark Ellzey)
+ o draining on idle, potential fix, prob. not. (b968888 Mark Ellzey)
+ o adding NODELAY to downstream connections. (e385089 Mark Ellzey)
+ o Add smoke test for invalid upstream chunking (b1e028e Stephen Cox)
+ o testing. (7c06d69 Mark Ellzey)
+ o Add config/backend support for chunking test (c233b6d Stephen Cox)
+ o active when pending is full in start (0ef3f91 Mark Ellzey)
+ o removing setsockopt (9b068ba Mark Ellzey)
+ o removing drain from set_idle() (4eea75b Mark Ellzey)
+ o removing event_active (f233970 Mark Ellzey)
+ o test (a223831 Mark Ellzey)
+ o rearrange timer_del (6fcff90 Mark Ellzey)
+ o Added some pending debug logs (eda3a38 Mark Ellzey)
+ o Fix potential hanging-connection issue if client sends connection: close header. (63e1372 Mark Ellzey)
+ o Make various timers fire at a lower priority than other events. (d30f3fa Mark Ellzey)
+ o removing priorities. (82eb732 Mark Ellzey)
+ o testing thresholds (5001246 Mark Ellzey)
+ o updating tests (999a86a Mark Ellzey)
+ o Made high-watermark for downstreams configurable (8736fd6 Mark Ellzey)
+ o Removing stupid debug log. (aaadb84 Mark Ellzey)
+ o Testing removal of pending check when it's already been accepted. (59ba13f Mark Ellzey)
+ o Prepping v1.0.9 (449a3e7 Mark Ellzey)
+
+v1.0.7
+ o Fix logging param on downstream reconnect (44bb5aa Stephen Cox)
+ o Allow SSL context timeout to be passed in via config (7d016e2 Stephen Cox)
+ o Add smoke tests (0c48048 Stephen Cox)
+ o Prefer x-ssl-certificate instead of x-ssl-cert for consistency (354134f Stephen Cox)
+ o Implement missing tostr functions (x-ssl header support) (41fd76c Stephen Cox)
+ o Add additional test rewrite rules; Clean up spacing (e956cb2 Stephen Cox)
+ o Allow arbitrary x509 extension to be added as a header to downstream; Fix directory issues with smoke test (b4589f8 Stephen Cox)
+ o Revert cfg user/group to rproxy (901e154 Stephen Cox)
+ o Add smoke tests for slow connections and invalid chunk length. (b759937 Stephen Cox)
+ o cleanup (6c8933b Mark Ellzey)
+ o Have smoke tests run in build directory without install. (0b71ef9 Mark Ellzey)
+ o Updating README.md (cd23e34 Mark Ellzey)
+ o Prepping release v1.0.8 (785b380 Mark Ellzey)
+
+v1.0.6
+ o tp2656 - fix to immediately re-ping upon down -> idle downstream state transitions. (236f1b5 Mark Ellzey)
+ o TP-2653 protocols-(on|off) directives being ignored. (7b1cbf1 Mark Ellzey)
+ o Various bugfixes (b184ef6 Mark Ellzey)
+ o Prepping release v1.0.7 (c18f337 Mark Ellzey)
+
+v1.0.5
+ o Inform evhtp to not keep the connection alive if pending timeout is reached. (75dd245 Mark Ellzey)
+ o Set connection: close header if pending timeout occurs (acf3983 Mark Ellzey)
+ o Require libevhtp version >= 0.4.5 (f6c984a Mark Ellzey)
+ o Prepping release v1.0.6 (92c0fa0 Mark Ellzey)
+
+v1.0.4
+ o When a downstream errors during a response to the upstream, we must force the client connection closed instead of sending back just a 503. (6d66efd Mark Ellzey)
+ o Fixed syntax error. (67ad8e6 Mark Ellzey)
+ o fix with unsetting hooks before connection_free (851af51 Mark Ellzey)
+ o Prepping release 1.0.5 (951ae40 Mark Ellzey)
+
+v1.0.3
+ o Cert buffer not large enough to accomodate NULL byte. Do not assume last character in input is '\n'. (000708a Sean Cunningham)
+ o Prep release v1.0.4 (11abee1 Mark Ellzey)
+
+v1.0.2
+ o Modified ChangeLog (f15529b Mark Ellzey)
+ o Added enforce-peer-cert and updated documentation. (dc4bd2d Mark Ellzey)
+ o If the system contains the daemon() function, then use that instead of the built-in one. (02367ac Mark Ellzey)
+ o Removed x509_chk_issued_cb callback. (773517f Mark Ellzey)
+ o Daemonize fix (99b0037 Mark Ellzey)
+ o Prepping release v1.0.3 (507fee5 Mark Ellzey)
+
+v1.0.1
+ o Added max-pending config directive to limit the number of requests in a pending state. (399b30c Mark Ellzey)
+ o Prepping release 1.0.2 (ba2a353 Mark Ellzey)
+
+v1.0.0
+ o Updated unit tests. (2716cef Mark Ellzey)
+ o Fix crash when pending-timeout = 0 then attempts to delete the event. (1926c7e Mark Ellzey)
+ o Updating version information. (82d80f6 Mark Ellzey)
+

@@ -1,0 +1,14 @@
+# - Try to find the LibConfuse
+# Once done this will define
+#
+# LIBCONFUSE_FOUND - System has LibConfuse
+# LIBCONFUSE_INCLUDE_DIR - the LibConfuse include directory
+# LIBCONFUSE_LIBRARY 0 The library needed to use LibConfuse
+
+FIND_PATH(LIBCONFUSE_INCLUDE_DIR NAMES confuse.h)
+FIND_LIBRARY(LIBCONFUSE_LIBRARY NAMES confuse)
+
+INCLUDE(FindPackageHandleStandardArgs)
+FIND_PACKAGE_HANDLE_STANDARD_ARGS(LibConfuse DEFAULT_MSG LIBCONFUSE_LIBRARY LIBCONFUSE_INCLUDE_DIR)
+MARK_AS_ADVANCED(LIBCONFUSE_INCLUDE_DIR LIBCONFUSE_LIBRARY)
+
