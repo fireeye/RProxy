@@ -1,20 +1,3 @@
-/*
- * Copyright [2012] [Mandiant, inc]
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -41,17 +24,16 @@
 
 #include "rproxy.h"
 
-static void downstream_pending_timeout(evutil_socket_t fd, short what, void * arg);
+static void rproxy_process_pending(int, short, void *);
 
 int
-append_ssl_x_headers(rproxy_t * rproxy, evhtp_request_t * upstream_req) {
+append_ssl_x_headers(headers_cfg_t * headers_cfg, evhtp_request_t * upstream_req) {
     evhtp_headers_t * headers;
-    headers_cfg_t   * headers_cfg;
     x509_ext_cfg_t  * x509_ext_cfg;
 
     evhtp_ssl_t     * ssl;
 
-    if (!rproxy || !upstream_req) {
+    if (!headers_cfg || !upstream_req) {
         return -1;
     }
 
@@ -61,10 +43,6 @@ append_ssl_x_headers(rproxy_t * rproxy, evhtp_request_t * upstream_req) {
 
     if (!(headers = upstream_req->headers_in)) {
         return -1;
-    }
-
-    if (!(headers_cfg = rproxy->server_cfg->headers)) {
-        return 0;
     }
 
     if (headers_cfg->x_ssl_subject == true) {
@@ -158,16 +136,23 @@ append_ssl_x_headers(rproxy_t * rproxy, evhtp_request_t * upstream_req) {
         }
     }
 
-    TAILQ_FOREACH(x509_ext_cfg, &headers_cfg->x509_exts, next) {
-        unsigned char * ext_str;
+    {
+        lztq_elem * x509_elem;
+        lztq_elem * x509_save;
 
-        evhtp_kv_rm_and_free(headers, evhtp_kvs_find_kv(headers, x509_ext_cfg->name));
+        for (x509_elem = lztq_first(headers_cfg->x509_exts); x509_elem; x509_elem = x509_save) {
+            unsigned char * ext_str;
 
-        if ((ext_str = ssl_x509_ext_tostr(ssl, x509_ext_cfg->oid))) {
-            evhtp_headers_add_header(headers,
-                                     evhtp_header_new(x509_ext_cfg->name, ext_str, 0, 1));
+            x509_ext_cfg = lztq_elem_data(x509_elem);
+            assert(x509_ext_cfg != NULL);
 
-            free(ext_str);
+            if ((ext_str = ssl_x509_ext_tostr(ssl, x509_ext_cfg->oid))) {
+                evhtp_headers_add_header(headers,
+                                         evhtp_header_new(x509_ext_cfg->name, ext_str, 0, 1));
+                free(ext_str);
+            }
+
+            x509_save = lztq_next(x509_elem);
         }
     }
 
@@ -175,22 +160,17 @@ append_ssl_x_headers(rproxy_t * rproxy, evhtp_request_t * upstream_req) {
 } /* append_ssl_x_headers */
 
 int
-append_x_headers(rproxy_t * rproxy, evhtp_request_t * upstream_req) {
+append_x_headers(headers_cfg_t * headers_cfg, evhtp_request_t * upstream_req) {
     evhtp_headers_t * headers;
-    headers_cfg_t   * headers_cfg;
     char              tmp1[1024];
     char              tmp2[1024];
 
-    if (!rproxy || !upstream_req) {
+    if (!headers_cfg || !upstream_req) {
         return -1;
     }
 
     if (!(headers = upstream_req->headers_in)) {
         return -1;
-    }
-
-    if (!(headers_cfg = rproxy->server_cfg->headers)) {
-        return 0;
     }
 
     if (headers_cfg->x_forwarded_for == true) {
@@ -230,7 +210,7 @@ append_x_headers(rproxy_t * rproxy, evhtp_request_t * upstream_req) {
     }
 
     if (upstream_req->conn->ssl) {
-        if (append_ssl_x_headers(rproxy, upstream_req) < 0) {
+        if (append_ssl_x_headers(headers_cfg, upstream_req) < 0) {
             return -1;
         }
     }
@@ -276,15 +256,19 @@ send_upstream_headers(evhtp_request_t * upstream_req, evhtp_headers_t * hdrs, vo
     }
 
     if (!request->downstream_conn->connection) {
+#if 0
         logger_log_request_error(rproxy->logger, request,
                                  "[ERROR] send_upstream_headers() request->downstream_conn->connection == NULL");
+#endif
         return EVHTP_RES_ERROR;
     }
 
     /* Add X-Headers to the request if applicable */
-    if (append_x_headers(rproxy, upstream_req) < 0) {
+    if (append_x_headers(request->rule->config->headers, upstream_req) < 0) {
+#if 0
         logger_log_request_error(rproxy->logger, request,
                                  "[ERROR] send_upstream_headers() append_x_headers < 0");
+#endif
         return EVHTP_RES_ERROR;
     }
 
@@ -311,9 +295,11 @@ send_upstream_headers(evhtp_request_t * upstream_req, evhtp_headers_t * hdrs, vo
             connection_hdr = evhtp_header_new("Connection", "Keep-Alive", 0, 0);
 
             if (connection_hdr == NULL) {
+#if 0
                 logger_log_request_error(rproxy->logger, request,
                                          "[CRIT] Could not create new header! %s",
                                          strerror(errno));
+#endif
                 exit(EXIT_FAILURE);
             }
 
@@ -340,8 +326,10 @@ send_upstream_headers(evhtp_request_t * upstream_req, evhtp_headers_t * hdrs, vo
             evhtp_header_rm_and_free(hdrs, connection_hdr);
             break;
         default:
+#if 0
             logger_log_request_error(rproxy->logger, request,
                                      "[ERROR] send_upstream_headers() unknown proto %d", upstream_req->proto);
+#endif
             return EVHTP_RES_ERROR;
     } /* switch */
 
@@ -356,16 +344,17 @@ send_upstream_headers(evhtp_request_t * upstream_req, evhtp_headers_t * hdrs, vo
     }
 
     if (!(buf = evbuffer_new())) {
+#if 0
         logger_log_request_error(rproxy->logger, request,
                                  "[CRIT] Could not create new evbuffer! %s",
                                  strerror(errno));
+#endif
         exit(EXIT_FAILURE);
     }
 
-    evbuffer_add_printf(buf, "%s %s%s%s%s HTTP/%d.%d\r\n",
+    evbuffer_add_printf(buf, "%s %s%s%s HTTP/%d.%d\r\n",
                         htparser_get_methodstr(upstream_req->conn->parser),
-                        request->rule->regex_to,
-                        upstream_req->uri->path->match_end,
+                        upstream_req->uri->path->full,
                         *query_args ? "?" : "", query_args,
                         htparser_get_major(upstream_req->conn->parser),
                         htparser_get_minor(upstream_req->conn->parser));
@@ -393,21 +382,27 @@ send_upstream_body(evhtp_request_t * upstream_req, evbuf_t * buf, void * arg) {
     assert(rproxy != NULL);
 
     if (!upstream_req || !buf) {
+#if 0
         logger_log_request_error(rproxy->logger, request,
                                  "[ERROR] send_upstream_body() upstream_req = %p, buf = %p", upstream_req, buf);
+#endif
         return EVHTP_RES_FATAL;
     }
 
     if (!(ds_conn = request->downstream_conn)) {
+#if 0
         logger_log_request_error(rproxy->logger, request,
                                  "[ERROR] send_upstream_body() downstream_conn == NULL");
+#endif
         return EVHTP_RES_FATAL;
     }
 
     if (!ds_conn->connection || request->error > 0) {
+#if 0
         logger_log_request_error(rproxy->logger, request,
                                  "[ERROR] send_upstream_body() conn->connection = %p, request->error == %d",
                                  ds_conn->connection, request->error);
+#endif
         evbuffer_drain(buf, -1);
 
         return EVHTP_RES_ERROR;
@@ -444,21 +439,27 @@ send_upstream_new_chunk(evhtp_request_t * upstream_req, uint64_t len, void * arg
     assert(rproxy != NULL);
 
     if (!upstream_req) {
+#if 0
         logger_log_error(rproxy->logger,
                          "[ERROR] send_upstream_new_chunk() upstream_req == NULL");
+#endif
         return EVHTP_RES_FATAL;
     }
 
     if (!(ds_conn = request->downstream_conn)) {
+#if 0
         logger_log_request_error(rproxy->logger, request,
                                  "[ERROR] send_upstream_new_chunk() request->downstream_conn == NULL");
+#endif
         return EVHTP_RES_FATAL;
     }
 
     if (!ds_conn->connection || request->error > 0) {
+#if 0
         logger_log_request_error(rproxy->logger, request,
                                  "[ERROR] send_upstream_new_chunk() conn->connection = %p, request->error = %d",
                                  ds_conn->connection, request->error);
+#endif
         return EVHTP_RES_ERROR;
     }
 
@@ -466,7 +467,7 @@ send_upstream_new_chunk(evhtp_request_t * upstream_req, uint64_t len, void * arg
                         "%x\r\n", (unsigned int)len);
 
     return EVHTP_RES_OK;
-}
+} /* send_upstream_new_chunk */
 
 evhtp_res
 send_upstream_chunk_done(evhtp_request_t * upstream_req, void * arg) {
@@ -481,9 +482,11 @@ send_upstream_chunk_done(evhtp_request_t * upstream_req, void * arg) {
     ds_conn = request->downstream_conn;
 
     if (!ds_conn->connection || request->error > 0) {
+#if 0
         logger_log_request_error(rproxy->logger, request,
                                  "[ERROR] send_upstream_chunk_done() conn->connection = %p, request->error = %d",
                                  ds_conn->connection, request->error);
+#endif
         return EVHTP_RES_ERROR;
     }
 
@@ -504,9 +507,11 @@ send_upstream_chunks_done(evhtp_request_t * upstream_req, void * arg) {
     ds_conn = request->downstream_conn;
 
     if (!ds_conn->connection || request->error > 0) {
+#if 0
         logger_log_request_error(rproxy->logger, request,
                                  "[ERROR] send_upstream_chunks_done() conn->connection = %p, request->error = %d",
                                  ds_conn->connection, request->error);
+#endif
         return EVHTP_RES_ERROR;
     }
 
@@ -540,7 +545,9 @@ upstream_fini(evhtp_request_t * upstream_req, void * arg) {
     assert(ds_conn != NULL);
 
     if (REQUEST_HAS_ERROR(request)) {
+#if 0
         logger_log_request_error(rproxy->logger, request, "[CRIT] we should never get here!");
+#endif
         downstream_connection_set_down(ds_conn);
     } else {
         downstream_connection_set_idle(ds_conn);
@@ -571,7 +578,9 @@ upstream_error(evhtp_request_t * upstream_req, short events, void * arg) {
 
     evhtp_unset_all_hooks(&upstream_req->hooks);
 
+#if 0
     logger_log_error(rproxy->logger, "[WARN] client aborted error = %x", events);
+#endif
 
     if (request->pending) {
         /* upstream encountered socket error while still in a pending state */
@@ -598,19 +607,149 @@ upstream_error(evhtp_request_t * upstream_req, short events, void * arg) {
             /* the request was completely finished, so we can safely set the
              * downstream as idle.
              */
+#if 0
             logger_log_request_error(rproxy->logger, request,
                                      "[WARN] request completed, client aborted");
+#endif
             downstream_connection_set_idle(ds_conn);
         } else {
             /* request never completed, set the connection to down */
+#if 0
             logger_log_request_error(rproxy->logger, request,
                                      "[WARN] request incomplete, client aborted");
+#endif
             downstream_connection_set_down(ds_conn);
         }
 
         request_free(request);
     }
 } /* upstream_error */
+
+/**
+ * @brief allocates a new downstream_t, and appends it to the
+ *        rproxy->downstreams list. This is callback for the
+ *        lztq_for_each function from rproxy_thread_init().
+ *
+ * @param elem
+ * @param arg
+ *
+ * @return
+ */
+static int
+add_downstream(lztq_elem * elem, void * arg) {
+    rproxy_t         * rproxy = arg;
+    downstream_cfg_t * ds_cfg = lztq_elem_data(elem);
+    downstream_t     * downstream;
+    lztq_elem        * nelem;
+
+    assert(rproxy != NULL);
+    assert(ds_cfg != NULL);
+
+    downstream = downstream_new(rproxy, ds_cfg);
+    assert(downstream != NULL);
+
+    nelem      = lztq_append(rproxy->downstreams, downstream,
+                             sizeof(downstream), downstream_free);
+    assert(nelem != NULL);
+
+    return 0;
+}
+
+/**
+ * @brief creates n connections to the server information contained in a
+ *        downstream_t instance. This is the callback for the lztq_for_each
+ *        function from rproxy_thread_init() (after the downstream list has been
+ *        created.
+ *
+ * @param elem
+ * @param arg
+ *
+ * @return
+ */
+static int
+start_downstream(lztq_elem * elem, void * arg) {
+    evbase_t     * evbase     = arg;
+    downstream_t * downstream = lztq_elem_data(elem);
+
+    assert(evbase != NULL);
+    assert(downstream != NULL);
+
+    return downstream_connection_init(evbase, downstream);
+}
+
+/**
+ * @brief match up names in the list of downstream_cfg_t's in rule_cfg->downstreams
+ *        to the downstream_t's in the rproxy->downstreams list. If found,
+ *        create a rule_t and appends it to the rproxy->rules list.
+ *
+ * @param elem
+ * @param arg
+ *
+ * @return
+ */
+static int
+associate_rule_with_downstreams(lztq_elem * elem, void * arg) {
+    rproxy_t   * rproxy   = arg;
+    rule_cfg_t * rule_cfg = lztq_elem_data(elem);
+    lztq_elem  * name_elem;
+    lztq_elem  * name_elem_temp;
+    rule_t     * rule;
+
+    assert(rproxy != NULL);
+    assert(rule_cfg != NULL);
+
+    rule              = calloc(sizeof(rule_t), 1);
+    assert(rule != NULL);
+
+    rule->rproxy      = rproxy;
+    rule->config      = rule_cfg;
+
+    rule->downstreams = lztq_new();
+    assert(rule->downstreams != NULL);
+
+    /* for each string in the rule_cfg's downstreams section, find the matching
+     * downstream_t and append it.
+     */
+    for (name_elem = lztq_first(rule_cfg->downstreams); name_elem != NULL; name_elem = name_elem_temp) {
+        const char   * ds_name = lztq_elem_data(name_elem);
+        downstream_t * ds;
+        lztq_elem    * nelem;
+
+        assert(ds_name != NULL);
+
+        if (!(ds = downstream_find_by_name(rproxy->downstreams, ds_name))) {
+            /* could not find a downstream_t which has this name! */
+            return -1;
+        }
+
+        nelem          = lztq_append(rule->downstreams, ds, sizeof(ds), NULL);
+        assert(nelem != NULL);
+
+        name_elem_temp = lztq_next(name_elem);
+    }
+
+    lztq_append(rproxy->rules, rule, sizeof(rule), NULL);
+
+    return 0;
+} /* associate_rule_with_downstreams */
+
+static rule_t *
+find_rule_from_cfg(rule_cfg_t * rule_cfg, lztq * rules) {
+    lztq_elem * rule_elem;
+    lztq_elem * rule_elem_temp;
+
+    for (rule_elem = lztq_first(rules); rule_elem != NULL; rule_elem = rule_elem_temp) {
+        rule_t * rule = lztq_elem_data(rule_elem);
+
+        if (rule->config == rule_cfg) {
+            return rule;
+        }
+
+        rule_elem_temp = lztq_next(rule_elem);
+    }
+
+    return NULL;
+}
 
 /**
  * @brief Called when an upstream request is in the pending queue and the
@@ -688,81 +827,84 @@ upstream_pre_accept(evhtp_connection_t * up_conn, void * arg) {
 
 evhtp_res
 upstream_request_start(evhtp_request_t * up_req, evhtp_path_t * path, void * arg) {
-    /* this function is called whenever evhtp has parsed up to the PATH of a
-     * request.
+    /* This function is called whenever evhtp has matched a rule on a request.
      *
-     * Once the downstream request has been initialized and all data is setup,
-     * this function will not immediately process the request since a downstream
-     * connection may not be available at the time the upstream request was
-     * made. Instead the request is placed in a pending request queue that is
-     * signaled to process every time a downstream connection is set to idle
-     * (via downstream_connection_set_idle()).
+     * Once the downstream request has been initialized and setup, this function
+     * will *NOT* immediately start processing the request. This is because a
+     * downstream connection may not be available at the time this function is
+     * called.
      *
-     * The return value of this is EVHTP_RES_PAUSE which informs the evhtp
-     * backend to suspend reading of data on the upstreams socket until the
-     * process_pending function successfully finds an idle downstream
-     * connection.
+     * Instead, the request is placed in a pending request queue where this
+     * queue is processed once downstream_connection_set_idle() has signaled the
+     * process_pending event handler that a downstream connection is available.
      *
-     * TL;DNR: upstream request is not immediately processed but placed in
-     *         pending queue until downstream connection becomes available.
+     * The return value of this function, EVHTP_RES_PAUSE, informs the evhtp
+     * backend to suspend reading on the socket on the upstream until
+     * process_pending successfully finds an idle downstream connection. From
+     * there the upstream request is resumed.
+     *
+     * TL;DNR: upstream request is not immediately processed, but placed in a
+     *         pending queue until a downstream connection becomes available.
      */
-    rule_t    * rule   = NULL;
-    rproxy_t  * rproxy = NULL;
-    request_t * ds_req = NULL;
+    rule_cfg_t         * rule_cfg   = NULL;
+    rule_t             * rule       = NULL;
+    rproxy_t           * rproxy     = NULL;
+    request_t          * ds_req     = NULL;
+    server_cfg_t       * serv_cfg   = NULL;
+    evhtp_connection_t * up_conn    = NULL;
+    struct timeval     * pending_tv = NULL;
 
     /* the rproxy structure is contained within the evthr's aux var */
     if (!(rproxy = evthr_get_aux(up_req->conn->thread))) {
         return EVHTP_RES_FATAL;
     }
 
-    if (!(rule = arg)) {
-        logger_log_error(rproxy->logger,
-                         "[ERROR] upstream_request_start() arg == NULL");
+    if (!(rule_cfg = arg)) {
         return EVHTP_RES_FATAL;
     }
 
-    /* initialize the downstream request */
-    if (!(ds_req = request_new(rproxy))) {
-        logger_log_error(rproxy->logger, "[CRIT] Could not create new request! %s",
-                         strerror(errno));
-        exit(EXIT_FAILURE);
+    /* find the rule_t from rproxy->rules which matches the rule_cfg so that we
+     * can use the proper downstream when this upstream request is serviced.
+     */
+    if (!(rule = find_rule_from_cfg(rule_cfg, rproxy->rules))) {
+        return EVHTP_RES_FATAL;
     }
 
-    /* set the upstream request */
-    ds_req->upstream_request = up_req;
+    serv_cfg                 = rproxy->server_cfg;
+    assert(serv_cfg != NULL);
 
-    /* set the request as pending */
+    ds_req                   = request_new(rproxy);
+    assert(ds_req != NULL);
+
+    up_conn                  = evhtp_request_get_connection(up_req);
+    assert(up_conn != NULL);
+
+    ds_req->upstream_request = up_req;
+    ds_req->rule             = rule;
     ds_req->pending          = 1;
     rproxy->n_pending       += 1;
 
-    /* set the requests matched rule */
-    ds_req->rule = rule;
-
-    if (rproxy->server_cfg->pending_timeout) {
-        struct timeval stagger_tv = { 0 };
-        struct timeval tv;
-
-        ds_req->pending_ev = evtimer_new(rproxy->evbase, downstream_pending_timeout, ds_req);
-
-        /* in order to avoid bursts of pending timers which can cause
-         * degregation based on the number of timers, we use the cached
-         * event_base's timeval->tv_usec to stagger the pending timer
-         * execution.
-         */
-
-        event_base_gettimeofday_cached(rproxy->evbase, &stagger_tv);
-
-        /* we don't really want to go go over half a second */
-        stagger_tv.tv_usec = stagger_tv.tv_usec % 5000;
-
-
-        tv.tv_sec          = rproxy->server_cfg->pending_timeout;
-        tv.tv_usec         = stagger_tv.tv_usec;
-
-        evtimer_add(ds_req->pending_ev, &tv);
+    /* if a rule has an upstream-[read|write]-timeout config set, we will set a
+     * upstream connection-specific timeout that overrides the global one.
+     */
+    if (rule_cfg->has_up_read_timeout || rule_cfg->has_up_write_timeout) {
+        evhtp_connection_set_timeouts(up_conn,
+                                      &rule_cfg->up_read_timeout,
+                                      &rule_cfg->up_write_timeout);
     }
 
-    /* Since this is called after a regex match, we set upstream request
+    if (serv_cfg->pending_timeout.tv_sec || serv_cfg->pending_timeout.tv_usec) {
+        /* a pending timeout has been configured, so set an evtimer to trigger
+         * if this upstream request remains in the pending queue for that amount
+         * of time.
+         */
+        ds_req->pending_ev = evtimer_new(rproxy->evbase, downstream_pending_timeout, ds_req);
+        assert(ds_req->pending_ev != NULL);
+
+        evtimer_add(ds_req->pending_ev, &serv_cfg->pending_timeout);
+    }
+
+    /* Since this is called after a path match, we set upstream request
      * specific evhtp hooks specific to this request. This is done in order
      * to stream the upstream data directly to the downstream and allow for
      * the modification of the request made to the downstream.
@@ -798,53 +940,9 @@ upstream_request_start(evhtp_request_t * up_req, evhtp_path_t * path, void * arg
     TAILQ_INSERT_TAIL(&rproxy->pending, ds_req, next);
     event_active(rproxy->request_ev, EV_WRITE, 1);
 
-    /* tell evhtp to stop reading from the upstream */
+    /* tell evhtp to stop reading from the upstream socket */
     return EVHTP_RES_PAUSE;
-}     /* upstream_request_start */
-
-void
-rproxy_process_pending(int fd, short which, void * arg) {
-    rproxy_t  * rproxy;
-    request_t * request;
-    request_t * save;
-    int         res;
-
-
-    rproxy  = arg;
-    assert(rproxy != NULL);
-
-    request = NULL;
-    save    = NULL;
-
-    for (request = TAILQ_FIRST(&rproxy->pending); request; request = save) {
-        save = TAILQ_NEXT(request, next);
-
-        if (!(request->downstream_conn = downstream_connection_get(rproxy))) {
-            /* no idle connections available */
-            break;
-        }
-
-        res = downstream_connection_set_active(request->downstream_conn);
-        assert(res >= 0);
-
-        /* remove this request from the pending queue */
-        TAILQ_REMOVE(&rproxy->pending, request, next);
-
-        request->downstream_conn->request = request;
-        request->pending   = 0;
-        rproxy->n_pending -= 1;
-
-        if (request->pending_ev != NULL) {
-            /* delete the pending request timer, if configured */
-            evtimer_del(request->pending_ev);
-        }
-
-
-        /* since the upstream request processing has been paused, we must
-         * unpause to process the request */
-        evhtp_request_resume(request->upstream_request);
-    }
-} /* rproxy_process_pending */
+} /* upstream_request_start */
 
 /**
  * @brief the evthr init callback. Setup rproxy event base and initialize
@@ -856,132 +954,179 @@ rproxy_process_pending(int fd, short which, void * arg) {
  */
 void
 rproxy_thread_init(evhtp_t * htp, evthr_t * thr, void * arg) {
-    evbase_t         * evbase;
-    rproxy_t         * rproxy;
-    downstream_t     * downstream;
-    server_cfg_t     * server_cfg;
-    downstream_cfg_t * ds_cfg;
+    evbase_t     * evbase;
+    rproxy_t     * rproxy;
+    server_cfg_t * server_cfg;
+    int            res;
 
+    assert(htp != NULL);
+    assert(thr != NULL);
 
-    server_cfg = arg;
+    server_cfg          = arg;
     assert(server_cfg != NULL);
 
-    evbase     = evthr_get_base(thr);
+    evbase              = evthr_get_base(thr);
     assert(evbase != NULL);
 
-    if (!(rproxy = calloc(sizeof(rproxy_t), 1))) {
-        fprintf(stderr, "Could not malloc: %s\n", strerror(errno));
-        exit(EXIT_FAILURE);
-    }
+    rproxy              = calloc(sizeof(rproxy_t), 1);
+    assert(rproxy != NULL);
 
-    TAILQ_INIT(&rproxy->downstreams);
+    rproxy->downstreams = lztq_new();
+    rproxy->rules       = lztq_new();
+
+    assert(rproxy->downstreams != NULL);
+    assert(rproxy->rules != NULL);
+
+    /* init our pending request tailq */
     TAILQ_INIT(&rproxy->pending);
 
     rproxy->server_cfg = server_cfg;
-    rproxy->logger     = logger_init(server_cfg->logger);
     rproxy->evbase     = evbase;
+    rproxy->htp        = htp;
 
-    if (rproxy->logger) {
-        logger_open(rproxy->logger);
-    }
+    /* create a downstream_t instance for each configured downstream */
+    res = lztq_for_each(server_cfg->downstreams, add_downstream, rproxy);
+    assert(res == 0);
 
-    /* create a downstream instance for each configured downstream */
-    TAILQ_FOREACH(ds_cfg, &server_cfg->downstreams, next) {
-        downstream_t * downstream;
-
-        if (!(downstream = downstream_new(rproxy, ds_cfg))) {
-            logger_log_error(rproxy->logger,
-                             "[CRIT] Could not create new downstream! %s",
-                             strerror(errno));
-            exit(EXIT_FAILURE);
-        }
-
-        TAILQ_INSERT_TAIL(&rproxy->downstreams, downstream, next);
-    }
-
-    /* enable the pending request processing event */
+    /* enable the pending request processing event, this event is triggered
+     * whenever a downstream connection becomes available.
+     */
     rproxy->request_ev = event_new(evbase, -1, EV_READ | EV_PERSIST,
                                    rproxy_process_pending, rproxy);
+    assert(rproxy->request_ev != NULL);
 
-    /* set this threads aux data arguments to the rproxy_t structure */
+    /* set aux data argument to this threads specific rproxy_t structure */
     evthr_set_aux(thr, rproxy);
 
-    /* startup all of our downstream connections */
-    TAILQ_FOREACH(downstream, &rproxy->downstreams, next) {
-        if (downstream_connection_init(evbase, downstream) < 0) {
-            logger_log_error(rproxy->logger,
-                             "[CRIT] Could not init downstream conn! %s",
-                             strerror(errno));
-            exit(EXIT_FAILURE);
-        }
-    }
+    /* start all of our downstream connections */
+    res = lztq_for_each(rproxy->downstreams, start_downstream, evbase);
+    assert(res == 0);
+
+    /* Create a rule_t structure from each rule_cfg_t. The logic is as follows:
+     *
+     * Assume a configuration like the following:
+     *
+     * downstream ds_01 {
+     *    addr = 127.0.0.1
+     *    port = 8080
+     * }
+     *
+     * downstream ds_02 {
+     *    addr = 127.0.0.1
+     *    port = 8081
+     * }
+     *
+     * rules {
+     *   if-uri-match '/blah' {
+     *     downstreams = { "ds_01", "ds_02" }
+     *   }
+     * }
+     *
+     * the single rule here will use a connection from both "ds_01" and "ds_02"
+     * to service a request if it matches.
+     *
+     * Since the rproxy_t structure will be available by our request callback
+     * (via the evthr_t's aux data), we create rule_t structures containing a list of
+     * downstream_t pointers that would service the request and append it to
+     * rproxy->rules.
+     *
+     * The userdata argument passed to the request callback is a rule_cfg_t (as
+     * defined in add_callback_rule()). It is now up to the request callback to
+     * match the rule_cfg_t to the rule_t within the rproxy->rules list.
+     *
+     */
+    res = lztq_for_each(server_cfg->rules, associate_rule_with_downstreams, rproxy);
+    assert(res == 0);
+
+    return;
 } /* rproxy_thread_init */
+
+/**
+ * @brief Set an evhtp callback based on information in a single rule_cfg_t
+ *        structure. Based on the rule type, we either use set_cb, set_regex_cb,
+ *        or set_glob_cb. Only one real callback set is an on_path hook.
+ *
+ * @param elem
+ * @param arg
+ *
+ * @return
+ */
+static int
+add_callback_rule(lztq_elem * elem, void * arg) {
+    evhtp_t          * htp  = arg;
+    rule_cfg_t       * rule = lztq_elem_data(elem);
+    evhtp_callback_t * cb   = NULL;
+
+    switch (rule->type) {
+        case rule_type_exact:
+            cb = evhtp_set_cb(htp, rule->matchstr, NULL, rule);
+            break;
+        case rule_type_regex:
+            cb = evhtp_set_regex_cb(htp, rule->matchstr, NULL, rule);
+            break;
+        case rule_type_glob:
+            cb = evhtp_set_glob_cb(htp, rule->matchstr, NULL, rule);
+            break;
+    }
+
+    assert(cb != NULL);
+
+    /* if one of the callbacks matches, upstream_request_start will be called
+     * with the argument of this rule_cfg_t
+     */
+    evhtp_set_hook(&cb->hooks, evhtp_hook_on_path,
+                   upstream_request_start, rule);
+
+    return 0;
+}
 
 int
 rproxy_init(evbase_t * evbase, rproxy_cfg_t * cfg) {
-    server_cfg_t * server;
+    lztq_elem * serv_elem;
+    lztq_elem * serv_temp;
 
-    TAILQ_FOREACH(server, &cfg->servers, next) {
-        downstream_cfg_t * ds_cfg;
-        rewrite_cfg_t    * rw_cfg;
-        evhtp_t          * htp;
+    assert(evbase != NULL);
+    assert(cfg != NULL);
 
-        if (!(htp = evhtp_new(evbase, NULL))) {
-            return -1;
-        }
+    /* iterate over each server_cfg, and set up evhtp stuff */
+    for (serv_elem = lztq_first(cfg->servers); serv_elem != NULL; serv_elem = serv_temp) {
+        struct timeval * tv_read  = NULL;
+        struct timeval * tv_write = NULL;
+        evhtp_t        * htp;
+        server_cfg_t   * server;
+
+        server = lztq_elem_data(serv_elem);
+        assert(server != NULL);
+
+        /* create a new evhtp base structure for just this server */
+        htp    = evhtp_new(evbase, NULL);
+        assert(htp != NULL);
 
         /* create a pre-accept callback which will disconnect the client
-         * immediately if the max pending request queue is over the limit.
+         * immediately if the max-pending request queue is over the configured
+         * limit.
          */
-
         evhtp_set_pre_accept_cb(htp, upstream_pre_accept, NULL);
 
-        /* for each rewrite, create a rule which is used to create
-         * a regex based evhtp callback */
-        TAILQ_FOREACH(rw_cfg, &server->rewrites, next) {
-            evhtp_callback_t * cb = NULL;
-            rule_t           * rule;
+        /* for each rule, ccreate a evhtp callback with the defined type */
+        lztq_for_each(server->rules, add_callback_rule, htp);
 
-            if (!(rule = calloc(sizeof(rule_t), 1))) {
-                return -1;
-            }
-
-            /*
-             * convert the rewrite_cfg_t to a rule_t structure
-             * rule->rproxy     = rproxy;
-             */
-            rule->regex_from = strdup(rw_cfg->src);
-            rule->regex_to   = strdup(rw_cfg->dst);
-
-            cb = evhtp_set_regex_cb(htp, rule->regex_from, NULL, rule);
-
-            /* if a path matches the regex pattern, upstream_request_start will
-             * be called with the argument of this rule_t
-             */
-            evhtp_set_hook(&cb->hooks, evhtp_hook_on_path,
-                           upstream_request_start, rule);
+        if (server->ssl_cfg) {
+            /* enable SSL support on this server */
+            evhtp_ssl_init(htp, server->ssl_cfg);
         }
 
-        if (server->ssl) {
-            /* enable SSL support on the evhtp structure */
-            evhtp_ssl_init(htp, server->ssl);
+        /* if configured, set our upstream connection's read/write timeouts */
+        if (server->read_timeout.tv_sec || server->read_timeout.tv_usec) {
+            tv_read = &server->read_timeout;
         }
 
-        /* if configured, set our upstream read/write timeouts */
-        if (server->read_timeout || server->write_timeout) {
-            struct timeval tv_r = {
-                .tv_sec  = server->read_timeout,
-                .tv_usec = 0
-            };
+        if (server->write_timeout.tv_sec || server->write_timeout.tv_usec) {
+            tv_write = &server->write_timeout;
+        }
 
-            struct timeval tv_w = {
-                .tv_sec  = server->write_timeout,
-                .tv_usec = 0
-            };
-
-            evhtp_set_timeouts(htp,
-                               server->read_timeout ? &tv_r : NULL,
-                               server->write_timeout ? &tv_w : NULL);
+        if (tv_read || tv_write) {
+            evhtp_set_timeouts(htp, tv_read, tv_write);
         }
 
         /* use a worker thread pool for connections, and for each
@@ -995,17 +1140,62 @@ rproxy_init(evbase_t * evbase, rproxy_cfg_t * cfg) {
         if (evhtp_bind_socket(htp,
                               server->bind_addr,
                               server->bind_port,
-                              server->backlog) < 0) {
+                              server->listen_backlog) < 0) {
             fprintf(stderr, "[ERROR] unable to bind to %s:%d (%s)\n",
                     server->bind_addr,
                     server->bind_port,
                     strerror(errno));
             exit(-1);
         }
+
+        serv_temp = lztq_next(serv_elem);
     }
 
     return 0;
 }     /* rproxy_init */
+
+static void
+rproxy_process_pending(int fd, short which, void * arg) {
+    rproxy_t  * rproxy;
+    request_t * request;
+    request_t * save;
+    int         res;
+
+    rproxy = arg;
+    assert(rproxy != NULL);
+
+    for (request = TAILQ_FIRST(&rproxy->pending); request; request = save) {
+        save = TAILQ_NEXT(request, next);
+
+        if (!(request->downstream_conn = downstream_connection_get(request->rule))) {
+            continue;
+        }
+
+        /* set the connection to an active state so that other pending requests
+         * do not get this same downstream connection.
+         */
+        res = downstream_connection_set_active(request->downstream_conn);
+        assert(res >= 0);
+
+        /* remove this request from the pending queue */
+        TAILQ_REMOVE(&rproxy->pending, request, next);
+
+        request->downstream_conn->request = request;
+        request->pending   = 0;
+        rproxy->n_pending -= 1;
+
+        if (request->pending_ev != NULL) {
+            /* delete the pending timer so that it does not trigger */
+            evtimer_del(request->pending_ev);
+        }
+
+
+        /* since the upstream request processing has been paused, we must
+         * unpause it to process it.
+         */
+        evhtp_request_resume(request->upstream_request);
+    }
+}
 
 static void
 rproxy_dropperms(const char * user, const char * group) {
@@ -1144,15 +1334,17 @@ main(int argc, char ** argv) {
         return -1;
     }
 
-    if (!(rproxy_cfg = rproxy_cfg_parse_file(argv[1]))) {
+    if (!(rproxy_cfg = rproxy_cfg_parse(argv[1]))) {
         fprintf(stderr, "Error parsing file %s\n", argv[1]);
         return -1;
     }
 
+#if 0
 #ifdef USE_MALLOPT
     if (rproxy_cfg->mem_trimsz) {
         mallopt(M_TRIM_THRESHOLD, rproxy_cfg->mem_trimsz);
     }
+#endif
 #endif
 
     if (rproxy_set_rlimits(rproxy_cfg->max_nofile) < 0) {
