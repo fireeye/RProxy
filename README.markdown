@@ -8,6 +8,18 @@ RProxy is a reverse proxy server written with performance and scale in mind.
 * [OpenSSL](http://openssl.org)
 * [Libconfuse](http://www.nongnu.org/confuse/)
 
+## Building and installing
+
+### Building with all dependencies compiled and statically linked
+1. cd build
+2. cmake -DRPROXY_BUILD_DEPS:STRING=ON .. 
+3. make
+
+### Build using system-wide dependencies
+1. cd build
+2. cmake ..
+3. make
+
 ## Terminology
 
 <table>
