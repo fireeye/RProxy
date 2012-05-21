@@ -26,7 +26,7 @@
 #include <confuse.h>
 #include <evhtp.h>
 
-#define RPROXY_VERSION "1.0.24"
+#define RPROXY_VERSION "1.0.25"
 
 
 #if EVHTP_VERSION_MAJOR <= 0
