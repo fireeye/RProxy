@@ -4,11 +4,9 @@ include (ExternalProject)
 
 ExternalProject_Add (
 	libConfuse
-	GIT_REPOSITORY git://git.sv.gnu.org/confuse.git
-	GIT_TAG V2_7
+	URL http://savannah.nongnu.org/download/confuse/confuse-2.7.tar.gz
 	BUILD_IN_SOURCE 1
 	UPDATE_COMMAND ""
-	PATCH_COMMAND ./autogen.sh
 	CONFIGURE_COMMAND ./configure --enable-static --disable-shared --prefix=${RPROXY_DEPS_INSTALL}
 	BUILD_COMMAND make
 	INSTALL_COMMAND make install
