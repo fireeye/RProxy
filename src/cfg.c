@@ -83,6 +83,7 @@ static cfg_opt_t ssl_opts[] = {
     CFG_STR("ca",                 NULL,                        CFGF_NONE),
     CFG_STR("capath",             NULL,                        CFGF_NONE),
     CFG_STR("ciphers",            "RC4+RSA:HIGH:+MEDIUM:+LOW", CFGF_NONE),
+    CFG_STR("named-curve",        "prime256v1",                CFGF_NONE),
     CFG_BOOL("verify-peer",       cfg_false,                   CFGF_NONE),
     CFG_BOOL("enforce-peer-cert", cfg_false,                   CFGF_NONE),
     CFG_INT("verify-depth",       0,                           CFGF_NONE),
@@ -283,6 +284,9 @@ ssl_cfg_free(evhtp_ssl_cfg_t * c) {
     if (c->ciphers) {
         free(c->ciphers);
     }
+    if (c->named_curve) {
+        free(c->named_curve);
+    }
 
     free(c);
 }
@@ -343,6 +347,10 @@ ssl_cfg_parse(cfg_t * cfg) {
 
     if (cfg_getstr(cfg, "ciphers")) {
         scfg->ciphers = strdup(cfg_getstr(cfg, "ciphers"));
+    }
+
+    if (cfg_getstr(cfg, "named-curve")) {
+        scfg->named_curve = strdup(cfg_getstr(cfg, "named-curve"));
     }
 
     if (cfg_getbool(cfg, "verify-peer") == cfg_true) {
