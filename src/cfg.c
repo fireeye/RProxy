@@ -22,6 +22,8 @@
 
 #include "rproxy.h"
 
+#define DEFAULT_CIPHERS "ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-RC4-SHA:ECDHE-RSA-AES128-SHA:RC4-SHA:RC4-MD5:ECDHE-RSA-AES256-SHA:AES256-SHA:ECDHE-RSA-DES-CBC3-SHA:DES-CBC3-SHA:AES128-SHA"
+
 static cfg_opt_t logging_opts[] = {
     CFG_BOOL("enabled", cfg_false,                   CFGF_NONE),
     CFG_STR("type",     "file",                      CFGF_NONE),
@@ -82,7 +84,7 @@ static cfg_opt_t ssl_opts[] = {
     CFG_STR("key",                NULL,                        CFGF_NONE),
     CFG_STR("ca",                 NULL,                        CFGF_NONE),
     CFG_STR("capath",             NULL,                        CFGF_NONE),
-    CFG_STR("ciphers",            "RC4+RSA:HIGH:+MEDIUM:+LOW", CFGF_NONE),
+    CFG_STR("ciphers",            DEFAULT_CIPHERS,             CFGF_NONE),
     CFG_BOOL("verify-peer",       cfg_false,                   CFGF_NONE),
     CFG_BOOL("enforce-peer-cert", cfg_false,                   CFGF_NONE),
     CFG_INT("verify-depth",       0,                           CFGF_NONE),
