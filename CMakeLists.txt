@@ -1,17 +1,45 @@
 cmake_minimum_required(VERSION 2.8)
 
+project(RProxy)
+
 set (CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/CMakeModules)
 
-if (NOT CMAKE_BUILD_TYPE)
-	set(CMAKE_BUILD_TYPE Release)
-endif(NOT CMAKE_BUILD_TYPE)
+# Retr and build all dependencies for RProxy: -DRPROXY_BUILD_DEPS:STRING=ON
+option (RPROXY_BUILD_DEPS "Build external dependencies" OFF)
 
-find_package(LibEvent REQUIRED)
-find_package(libevhtp REQUIRED)
-find_package(OpenSSL REQUIRED)
-find_package(LibConfuse REQUIRED)
+set(RPROXY_DEPS_INSTALL ${PROJECT_BINARY_DIR}/install/)
 
-set (EXT_LIBS
+if (RPROXY_BUILD_DEPS)
+	add_subdirectory(libs)
+
+
+	set(LIBEVHTP_LIBRARY          evhtp)
+	set(LIBEVENT_LIBRARY          event)
+	set(LIBEVENT_CORE_LIBRARY     event_core)
+	set(LIBEVENT_PTHREADS_LIBRARY event_pthreads)
+	set(LIBEVENT_EXTRA_LIBRARY    event_extra)
+	set(LIBEVENT_OPENSSL_LIBRARY  event_openssl)
+	set(LIBEVHTP_LIBRARY          evhtp)
+	set(LIBCONFUSE_LIBRARY        confuse)
+	set(OPENSSL_LIBRARIES         ssl crypto)
+
+	link_directories(${RPROXY_DEPS_INSTALL}/lib/)
+	include_directories(${RPROXY_DEPS_INSTALL}/include/)
+
+else()
+	find_package(LibEvent REQUIRED)
+	find_package(libevhtp REQUIRED)
+	find_package(LibConfuse REQUIRED)
+	find_package(OpenSSL REQUIRED)
+
+	include_directories(
+		${LIBEVHTP_INCLUDE_DIR}
+		${OPENSSL_INCLUDE_DIR}/openssl
+		${LIBCONFUSE_INCLUDE_DIR}
+	)
+endif()
+
+set (RPROXY_EXTERNAL_LIBS
 			${LIBEVHTP_LIBRARY}
 			${LIBEVENT_LIBRARY}
 			${LIBEVENT_CORE_LIBRARY}
@@ -19,12 +47,6 @@ set (EXT_LIBS
 			${LIBEVENT_OPENSSL_LIBRARY}
 			${LIBCONFUSE_LIBRARY}
 			${OPENSSL_LIBRARIES}
-)
-
-include_directories(
-			${LIBEVHTP_INCLUDE_DIR}
-			${OPENSSL_INCLUDE_DIR}/openssl
-			${LIBCONFUSE_INCLUDE_DIR}
 )
 
 # local system libraries

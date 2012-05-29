@@ -63,6 +63,7 @@ enum lb_method {
 
 typedef struct rproxy_cfg     rproxy_cfg_t;
 typedef struct rule_cfg       rule_cfg_t;
+typedef struct vhost_cfg      vhost_cfg_t;
 typedef struct server_cfg     server_cfg_t;
 typedef struct downstream_cfg downstream_cfg_t;
 typedef struct headers_cfg    headers_cfg_t;
@@ -127,24 +128,33 @@ struct downstream_cfg {
 };
 
 
+struct vhost_cfg {
+    evhtp_ssl_cfg_t * ssl_cfg;
+    lztq            * rules;        /**< list of rule_cfg_t's */
+    //log_cfg_t       * log_cfg;
+};
+
 /**
  * @brief configuration for a single listening frontend server.
  */
 struct server_cfg {
-    char   * bind_addr;               /**< address to bind on */
-    uint16_t bind_port;               /**< port to bind on */
-    int      num_threads;             /**< number of worker threads to start */
-    int      max_pending;             /**< max pending requests before new connections are dropped */
-    int      listen_backlog;          /**< listen backlog */
+    char   * bind_addr;             /**< address to bind on */
+    uint16_t bind_port;             /**< port to bind on */
+    int      num_threads;           /**< number of worker threads to start */
+    int      max_pending;           /**< max pending requests before new connections are dropped */
+    int      listen_backlog;        /**< listen backlog */
 
-    struct timeval read_timeout;      /**< time to wait for reading before client is dropped */
-    struct timeval write_timeout;     /**< time to wait for writing before client is dropped */
-    struct timeval pending_timeout;   /**< time to wait for a downstream to become available for a connection */
+    struct timeval read_timeout;    /**< time to wait for reading before client is dropped */
+    struct timeval write_timeout;   /**< time to wait for writing before client is dropped */
+    struct timeval pending_timeout; /**< time to wait for a downstream to become available for a connection */
 
-    evhtp_ssl_cfg_t * ssl_cfg;        /**< if enabled, the ssl configuration */
+    evhtp_ssl_cfg_t * ssl_cfg;      /**< if enabled, the ssl configuration */
+    lztq * downstreams;             /**< list of downstream_cfg_t's */
+    lztq * vhosts;                  /**< list of vhost_cfg_t's */
+#if 0
     /* log_cfg_t       * log_cfg; */
-    lztq * rules;                     /**< list of rule_cfg_t's */
-    lztq * downstreams;               /**< list of downstream_cfg_t's */
+    lztq * rules;                   /**< list of rule_cfg_t's */
+#endif
 };
 
 
@@ -152,12 +162,12 @@ struct server_cfg {
  * @brief main configuration structure.
  */
 struct rproxy_cfg {
-    bool   daemonize;                 /**< should proxy run in background */
-    int    max_nofile;                /**< max number of open file descriptors */
-    char * rootdir;                   /**< root dir to daemonize */
-    char * user;                      /**< user to run as */
-    char * group;                     /**< group to run as */
-    lztq * servers;                   /**< list of server_cfg_t's */
+    bool   daemonize;               /**< should proxy run in background */
+    int    max_nofile;              /**< max number of open file descriptors */
+    char * rootdir;                 /**< root dir to daemonize */
+    char * user;                    /**< user to run as */
+    char * group;                   /**< group to run as */
+    lztq * servers;                 /**< list of server_cfg_t's */
 };
 
 /********************************************
@@ -168,10 +178,10 @@ struct rproxy_cfg {
  * @brief a downstream's connection status.
  */
 enum downstream_status {
-    downstream_status_nil = 0,        /**< connection has never been used */
-    downstream_status_active,         /**< connection is actively processing */
-    downstream_status_idle,           /**< connection is idle and available */
-    downstream_status_down            /**< connection is down and cannot be used */
+    downstream_status_nil = 0,      /**< connection has never been used */
+    downstream_status_active,       /**< connection is actively processing */
+    downstream_status_idle,         /**< connection is idle and available */
+    downstream_status_down          /**< connection is down and cannot be used */
 };
 
 typedef struct rproxy            rproxy_t;

@@ -135,6 +135,15 @@ static cfg_opt_t rule_opts[] = {
     CFG_END()
 };
 
+static cfg_opt_t vhost_opts[] = {
+    CFG_SEC("ssl",            ssl_opts,        CFGF_NONE),
+    CFG_SEC("if-uri-match",   rule_exact_opts, CFGF_TITLE | CFGF_MULTI | CFGF_NO_TITLE_DUPES),
+    CFG_SEC("if-uri-rmatch",  rule_regex_opts, CFGF_TITLE | CFGF_MULTI | CFGF_NO_TITLE_DUPES),
+    CFG_SEC("if-uri-gmatch",  rule_glob_opts,  CFGF_TITLE | CFGF_MULTI | CFGF_NO_TITLE_DUPES),
+    CFG_STR_LIST("hostnames", NULL,            CFGF_NONE),
+    CFG_SEC("logging",        logging_opts,    CFGF_NONE),
+};
+
 static cfg_opt_t server_opts[] = {
     CFG_STR("addr",                 "127.0.0.1",     CFGF_NONE),
     CFG_INT("port",                 8080,            CFGF_NONE),
@@ -144,13 +153,16 @@ static cfg_opt_t server_opts[] = {
     CFG_INT_LIST("pending-timeout", "{ 0, 0 }",      CFGF_NONE),
     CFG_INT("max-pending",          0,               CFGF_NONE),
     CFG_INT("backlog",              1024,            CFGF_NONE),
-    CFG_SEC("ssl",                  ssl_opts,        CFGF_NONE),
-    CFG_SEC("logging",              logging_opts,    CFGF_NONE),
     CFG_SEC("downstream",           downstream_opts, CFGF_MULTI | CFGF_TITLE | CFGF_NO_TITLE_DUPES),
+    CFG_SEC("ssl",                  ssl_opts,        CFGF_NONE),
+    CFG_SEC("vhost",                vhost_opts,      CFGF_MULTI),
+#if 0
+    CFG_SEC("logging",              logging_opts,    CFGF_NONE),
     CFG_SEC("if-uri-match",         rule_exact_opts, CFGF_TITLE | CFGF_MULTI | CFGF_NO_TITLE_DUPES),
     CFG_SEC("if-uri-rmatch",        rule_regex_opts, CFGF_TITLE | CFGF_MULTI | CFGF_NO_TITLE_DUPES),
     CFG_SEC("if-uri-gmatch",        rule_glob_opts,  CFGF_TITLE | CFGF_MULTI | CFGF_NO_TITLE_DUPES),
     CFG_STR_LIST("hostnames",       NULL,            CFGF_NONE),
+#endif
     CFG_END()
 };
 
@@ -266,13 +278,38 @@ headers_cfg_free(headers_cfg_t * cfg) {
     free(cfg);
 }
 
+vhost_cfg_t *
+vhost_cfg_new(void) {
+    vhost_cfg_t * cfg;
+
+    cfg        = calloc(sizeof(vhost_cfg_t), 1);
+    cfg->rules = lztq_new();
+
+    return cfg;
+}
+
+void
+vhost_cfg_free(vhost_cfg_t * cfg) {
+    if (!cfg) {
+        return;
+    }
+
+    if (cfg->ssl_cfg) {
+        free(cfg->ssl_cfg);
+    }
+
+    lztq_free(cfg->rules);
+    free(cfg);
+}
+
 server_cfg_t *
 server_cfg_new(void) {
     server_cfg_t * cfg;
 
     cfg              = calloc(sizeof(server_cfg_t), 1);
-    cfg->rules       = lztq_new();
     cfg->downstreams = lztq_new();
+    cfg->vhosts      = lztq_new();
+    /* cfg->rules       = lztq_new(); */
 
     return cfg;
 }
@@ -289,11 +326,14 @@ server_cfg_free(void * arg) {
         free(cfg->bind_addr);
     }
 
+#if 0
     if (cfg->ssl_cfg) {
         free(cfg->ssl_cfg);
     }
 
     lztq_free(cfg->rules);
+#endif
+    lztq_free(cfg->vhosts);
     lztq_free(cfg->downstreams);
     free(cfg);
 }
@@ -549,7 +589,7 @@ x509_ext_cfg_parse(cfg_t * cfg) {
 }
 
 /**
- * @brief parses header addition config from server { rules { rule { headers { } } } }
+ * @brief parses header addition config from server vhost { { rules { rule { headers { } } } } }
  *
  * @param cfg
  *
@@ -592,7 +632,7 @@ headers_cfg_parse(cfg_t * cfg) {
 }
 
 /**
- * @brief parses a single rule from a server { rules { } } config
+ * @brief parses a single rule from a server { vhost { rules { } } } config
  *
  * @param cfg
  *
@@ -697,6 +737,29 @@ parse_rule_type_and_append(lztq * list, cfg_t * cfg, const char * name) {
     return i;
 }
 
+vhost_cfg_t *
+vhost_cfg_parse(cfg_t * cfg) {
+    vhost_cfg_t * vcfg;
+    int           i;
+    int           res;
+
+    vcfg          = vhost_cfg_new();
+    assert(vcfg != NULL);
+
+    scfg->ssl_cfg = ssl_cfg_parse(cfg_getsec(cfg, "ssl"));
+
+    res           = parse_rule_type_and_append(vcfg->rules, cfg, "if-uri-match");
+    assert(res >= 0);
+
+    res           = parse_rule_type_and_append(vcfg->rules, cfg, "if-uri-rmatch");
+    assert(res >= 0);
+
+    res           = parse_rule_type_and_append(vcfg->rules, cfg, "if-uri-gmatch");
+    assert(res >= 0);
+
+    return vcfg;
+}
+
 /**
  * @brief parses a server {} entry from a config.
  *
@@ -712,7 +775,7 @@ server_cfg_parse(cfg_t * cfg) {
 
     assert(cfg != NULL);
 
-    scfg                          = server_cfg_new();
+    scfg = server_cfg_new();
     assert(scfg != NULL);
 
     scfg->bind_addr               = strdup(cfg_getstr(cfg, "addr"));
@@ -740,6 +803,18 @@ server_cfg_parse(cfg_t * cfg) {
         assert(elem != NULL);
     }
 
+    for (i = 0; i < cfg_size(cfg, "vhost"); i++) {
+        lztq_elem   * elem;
+        vhost_cfg_t * vcfg;
+
+        vcfg = vhost_cfg_parse(cfg_getnsec(cfg, "vhost", i));
+        assert(vcfg != NULL);
+
+        elem = lztq_append(scfg->vhosts, vcfg, sizeof(vcfg), vhost_cfg_free);
+        assert(elem != NULL);
+    }
+
+#if 0
     res = parse_rule_type_and_append(scfg->rules, cfg, "if-uri-match");
     assert(res >= 0);
 
@@ -748,6 +823,7 @@ server_cfg_parse(cfg_t * cfg) {
 
     res = parse_rule_type_and_append(scfg->rules, cfg, "if-uri-gmatch");
     assert(res >= 0);
+#endif
 
     return scfg;
 } /* server_cfg_parse */
