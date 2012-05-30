@@ -78,6 +78,7 @@ struct rule_cfg {
     lb_method       lb_method;   /**< method of load-balacinging (defaults to RTT) */
     char          * matchstr;    /**< the uri to match on */
     headers_cfg_t * headers;     /**< headers which are added to the backend request */
+    vhost_cfg_t   * vhost_cfg;   /**< parent virtual host where this rule resides */
     lztq          * downstreams; /**< list of downstream names (as supplied by downstream_cfg_t->name */
     int             has_up_read_timeout;
     int             has_up_write_timeout;
@@ -130,8 +131,11 @@ struct downstream_cfg {
 
 struct vhost_cfg {
     evhtp_ssl_cfg_t * ssl_cfg;
-    lztq            * rules;        /**< list of rule_cfg_t's */
-    //log_cfg_t       * log_cfg;
+    lztq            * rule_cfgs;    /**< list of rule_cfg_t's */
+    lztq            * rules;        /* list of rule_t's */
+    char            * server_name;
+    lztq            * aliases;
+    /* log_cfg_t       * log_cfg; */
 };
 
 /**
@@ -149,8 +153,8 @@ struct server_cfg {
     struct timeval pending_timeout; /**< time to wait for a downstream to become available for a connection */
 
     evhtp_ssl_cfg_t * ssl_cfg;      /**< if enabled, the ssl configuration */
-    lztq * downstreams;             /**< list of downstream_cfg_t's */
-    lztq * vhosts;                  /**< list of vhost_cfg_t's */
+    lztq            * downstreams;  /**< list of downstream_cfg_t's */
+    lztq            * vhosts;       /**< list of vhost_cfg_t's */
 #if 0
     /* log_cfg_t       * log_cfg; */
     lztq * rules;                   /**< list of rule_cfg_t's */
@@ -260,11 +264,11 @@ struct rule {
 TAILQ_HEAD(pending_request_q, request);
 
 struct rproxy {
-    evhtp_t           * htp;
-    evbase_t          * evbase;
-    event_t           * request_ev;
-    server_cfg_t      * server_cfg;
-    lztq              * rules;       /**< list of all rule_t's */
+    evhtp_t      * htp;
+    evbase_t     * evbase;
+    event_t      * request_ev;
+    server_cfg_t * server_cfg;
+    /* lztq              * rules;       / **< list of all rule_t's * / */
     lztq              * downstreams; /**< list of all downstream_t's */
     int                 n_pending;   /**< number of pending requests */
     pending_request_q_t pending;     /**< list of pending upstream request_t's */

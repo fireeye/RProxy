@@ -136,12 +136,13 @@ static cfg_opt_t rule_opts[] = {
 };
 
 static cfg_opt_t vhost_opts[] = {
-    CFG_SEC("ssl",            ssl_opts,        CFGF_NONE),
-    CFG_SEC("if-uri-match",   rule_exact_opts, CFGF_TITLE | CFGF_MULTI | CFGF_NO_TITLE_DUPES),
-    CFG_SEC("if-uri-rmatch",  rule_regex_opts, CFGF_TITLE | CFGF_MULTI | CFGF_NO_TITLE_DUPES),
-    CFG_SEC("if-uri-gmatch",  rule_glob_opts,  CFGF_TITLE | CFGF_MULTI | CFGF_NO_TITLE_DUPES),
-    CFG_STR_LIST("hostnames", NULL,            CFGF_NONE),
-    CFG_SEC("logging",        logging_opts,    CFGF_NONE),
+    CFG_SEC("ssl",           ssl_opts,        CFGF_NONE),
+    CFG_SEC("if-uri-match",  rule_exact_opts, CFGF_TITLE | CFGF_MULTI | CFGF_NO_TITLE_DUPES),
+    CFG_SEC("if-uri-rmatch", rule_regex_opts, CFGF_TITLE | CFGF_MULTI | CFGF_NO_TITLE_DUPES),
+    CFG_SEC("if-uri-gmatch", rule_glob_opts,  CFGF_TITLE | CFGF_MULTI | CFGF_NO_TITLE_DUPES),
+    CFG_STR_LIST("aliases",  NULL,            CFGF_NONE),
+    CFG_SEC("logging",       logging_opts,    CFGF_NONE),
+    CFG_END()
 };
 
 static cfg_opt_t server_opts[] = {
@@ -154,8 +155,8 @@ static cfg_opt_t server_opts[] = {
     CFG_INT("max-pending",          0,               CFGF_NONE),
     CFG_INT("backlog",              1024,            CFGF_NONE),
     CFG_SEC("downstream",           downstream_opts, CFGF_MULTI | CFGF_TITLE | CFGF_NO_TITLE_DUPES),
+    CFG_SEC("vhost",                vhost_opts,      CFGF_MULTI | CFGF_TITLE | CFGF_NO_TITLE_DUPES),
     CFG_SEC("ssl",                  ssl_opts,        CFGF_NONE),
-    CFG_SEC("vhost",                vhost_opts,      CFGF_MULTI),
 #if 0
     CFG_SEC("logging",              logging_opts,    CFGF_NONE),
     CFG_SEC("if-uri-match",         rule_exact_opts, CFGF_TITLE | CFGF_MULTI | CFGF_NO_TITLE_DUPES),
@@ -282,8 +283,10 @@ vhost_cfg_t *
 vhost_cfg_new(void) {
     vhost_cfg_t * cfg;
 
-    cfg        = calloc(sizeof(vhost_cfg_t), 1);
-    cfg->rules = lztq_new();
+    cfg            = calloc(sizeof(vhost_cfg_t), 1);
+    cfg->rule_cfgs = lztq_new();
+    cfg->rules     = lztq_new();
+    cfg->aliases   = lztq_new();
 
     return cfg;
 }
@@ -299,6 +302,7 @@ vhost_cfg_free(vhost_cfg_t * cfg) {
     }
 
     lztq_free(cfg->rules);
+    lztq_free(cfg->rule_cfgs);
     free(cfg);
 }
 
@@ -715,12 +719,16 @@ downstream_cfg_parse(cfg_t * cfg) {
 }
 
 static int
-parse_rule_type_and_append(lztq * list, cfg_t * cfg, const char * name) {
-    int i;
+parse_rule_type_and_append(vhost_cfg_t * vhost, cfg_t * cfg, const char * name) {
+    lztq * list;
+    int    i;
 
-    assert(list != NULL);
+    assert(vhost != NULL);
     assert(cfg != NULL);
     assert(name != NULL);
+
+    list = vhost->rule_cfgs;
+    assert(list != NULL);
 
     for (i = 0; i < cfg_size(cfg, name); i++) {
         lztq_elem  * elem;
@@ -730,6 +738,7 @@ parse_rule_type_and_append(lztq * list, cfg_t * cfg, const char * name) {
             return -1;
         }
 
+        rule->vhost_cfg = vhost;
         elem = lztq_append(list, rule, sizeof(rule), rule_cfg_free);
         assert(elem != NULL);
     }
@@ -743,19 +752,33 @@ vhost_cfg_parse(cfg_t * cfg) {
     int           i;
     int           res;
 
-    vcfg          = vhost_cfg_new();
+    vcfg              = vhost_cfg_new();
     assert(vcfg != NULL);
 
-    scfg->ssl_cfg = ssl_cfg_parse(cfg_getsec(cfg, "ssl"));
+    vcfg->server_name = strdup(cfg_title(cfg));
+    vcfg->ssl_cfg     = ssl_cfg_parse(cfg_getsec(cfg, "ssl"));
 
-    res           = parse_rule_type_and_append(vcfg->rules, cfg, "if-uri-match");
+    res = parse_rule_type_and_append(vcfg, cfg, "if-uri-match");
     assert(res >= 0);
 
-    res           = parse_rule_type_and_append(vcfg->rules, cfg, "if-uri-rmatch");
+    res = parse_rule_type_and_append(vcfg, cfg, "if-uri-rmatch");
     assert(res >= 0);
 
-    res           = parse_rule_type_and_append(vcfg->rules, cfg, "if-uri-gmatch");
+    res = parse_rule_type_and_append(vcfg, cfg, "if-uri-gmatch");
     assert(res >= 0);
+
+    for (i = 0; i < cfg_size(cfg, "aliases"); i++) {
+        lztq_elem * elem;
+        char      * name;
+
+        assert(cfg_getnstr(cfg, "aliases", i) != NULL);
+
+        name = strdup(cfg_getnstr(cfg, "aliases", i));
+        assert(name != NULL);
+
+        elem = lztq_append(vcfg->aliases, name, strlen(name), free);
+        assert(elem != NULL);
+    }
 
     return vcfg;
 }
@@ -775,7 +798,7 @@ server_cfg_parse(cfg_t * cfg) {
 
     assert(cfg != NULL);
 
-    scfg = server_cfg_new();
+    scfg                          = server_cfg_new();
     assert(scfg != NULL);
 
     scfg->bind_addr               = strdup(cfg_getstr(cfg, "addr"));

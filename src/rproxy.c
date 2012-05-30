@@ -703,14 +703,18 @@ start_downstream(lztq_elem * elem, void * arg) {
  */
 static int
 associate_rule_with_downstreams(lztq_elem * elem, void * arg) {
-    rproxy_t   * rproxy   = arg;
-    rule_cfg_t * rule_cfg = lztq_elem_data(elem);
-    lztq_elem  * name_elem;
-    lztq_elem  * name_elem_temp;
-    rule_t     * rule;
+    rproxy_t    * rproxy   = arg;
+    rule_cfg_t  * rule_cfg = lztq_elem_data(elem);
+    vhost_cfg_t * vhost_cfg;
+    lztq_elem   * name_elem;
+    lztq_elem   * name_elem_temp;
+    rule_t      * rule;
 
     assert(rproxy != NULL);
     assert(rule_cfg != NULL);
+
+    vhost_cfg         = rule_cfg->vhost_cfg;
+    assert(vhost_cfg != NULL);
 
     rule              = calloc(sizeof(rule_t), 1);
     assert(rule != NULL);
@@ -742,7 +746,7 @@ associate_rule_with_downstreams(lztq_elem * elem, void * arg) {
         name_elem_temp = lztq_next(name_elem);
     }
 
-    lztq_append(rproxy->rules, rule, sizeof(rule), NULL);
+    lztq_append(vhost_cfg->rules, rule, sizeof(rule), NULL);
 
     return 0;
 } /* associate_rule_with_downstreams */
@@ -865,6 +869,7 @@ upstream_request_start(evhtp_request_t * up_req, evhtp_path_t * path, void * arg
     rproxy_t           * rproxy     = NULL;
     request_t          * ds_req     = NULL;
     server_cfg_t       * serv_cfg   = NULL;
+    vhost_cfg_t        * vhost_cfg  = NULL;
     evhtp_connection_t * up_conn    = NULL;
     struct timeval     * pending_tv = NULL;
 
@@ -877,10 +882,14 @@ upstream_request_start(evhtp_request_t * up_req, evhtp_path_t * path, void * arg
         return EVHTP_RES_FATAL;
     }
 
-    /* find the rule_t from rproxy->rules which matches the rule_cfg so that we
+    if (!(vhost_cfg = rule_cfg->vhost_cfg)) {
+        return EVHTP_RES_FATAL;
+    }
+
+    /* find the rule_t from vhost_cfg->rules which matches the rule_cfg so that we
      * can use the proper downstream when this upstream request is serviced.
      */
-    if (!(rule = find_rule_from_cfg(rule_cfg, rproxy->rules))) {
+    if (!(rule = find_rule_from_cfg(rule_cfg, vhost_cfg->rules))) {
         return EVHTP_RES_FATAL;
     }
 
@@ -986,10 +995,12 @@ rproxy_thread_init(evhtp_t * htp, evthr_t * thr, void * arg) {
     assert(rproxy != NULL);
 
     rproxy->downstreams = lztq_new();
-    rproxy->rules       = lztq_new();
-
     assert(rproxy->downstreams != NULL);
+#if 0
+    rproxy->rules       = lztq_new();
     assert(rproxy->rules != NULL);
+#endif
+
 
     /* init our pending request tailq */
     TAILQ_INIT(&rproxy->pending);
@@ -1016,6 +1027,20 @@ rproxy_thread_init(evhtp_t * htp, evthr_t * thr, void * arg) {
     res = lztq_for_each(rproxy->downstreams, start_downstream, evbase);
     assert(res == 0);
 
+    {
+        lztq_elem * vhost_elem = NULL;
+        lztq_elem * vhost_temp = NULL;
+
+        for (vhost_elem = lztq_first(server_cfg->vhosts); vhost_elem; vhost_elem = vhost_temp) {
+            vhost_cfg_t * vhost = lztq_elem_data(vhost_elem);
+
+            res        = lztq_for_each(vhost->rule_cfgs, associate_rule_with_downstreams, rproxy);
+            assert(res == 0);
+
+            vhost_temp = lztq_next(vhost_elem);
+        }
+    }
+#if 0
     /* Create a rule_t structure from each rule_cfg_t. The logic is as follows:
      *
      * Assume a configuration like the following:
@@ -1051,6 +1076,7 @@ rproxy_thread_init(evhtp_t * htp, evthr_t * thr, void * arg) {
      */
     res = lztq_for_each(server_cfg->rules, associate_rule_with_downstreams, rproxy);
     assert(res == 0);
+#endif
 
     return;
 } /* rproxy_thread_init */
@@ -1094,6 +1120,56 @@ add_callback_rule(lztq_elem * elem, void * arg) {
     return 0;
 }
 
+static int
+add_vhost_name(lztq_elem * elem, void * arg) {
+    evhtp_t * htp_vhost = arg;
+    char    * name      = lztq_elem_data(elem);
+
+    assert(htp_vhost != NULL);
+    assert(name != NULL);
+
+#if 0
+    if (TAILQ_EMPTY(&htp_main->vhosts)) {
+        /* we haven't added any vhosts to our main evhtp, so in this case we add
+         * this entry as a vhost.
+         */
+        return evhtp_add_vhost(htp_main, name, htp_vhost);
+    }
+#endif
+
+    return evhtp_add_alias(htp_vhost, name);
+}
+
+static int
+add_vhost(lztq_elem * elem, void * arg) {
+    evhtp_t     * htp       = arg;
+    vhost_cfg_t * vcfg      = lztq_elem_data(elem);
+    evhtp_t     * htp_vhost = NULL;
+
+    /* create a new child evhtp for this vhost */
+    htp_vhost = evhtp_new(htp->evbase, NULL);
+
+    /* for each rule, create a evhtp callback with the defined type */
+    lztq_for_each(vcfg->rule_cfgs, add_callback_rule, htp_vhost);
+
+    /* add the vhost using the name of the vhost config directive */
+    evhtp_add_vhost(htp, vcfg->server_name, htp_vhost);
+
+    /* create an alias for the vhost for each configured alias directive */
+    lztq_for_each(vcfg->aliases, add_vhost_name, htp_vhost);
+
+    if (vcfg->ssl_cfg != NULL) {
+        /* vhost specific ssl configuration found */
+        evhtp_ssl_init(htp_vhost, vcfg->ssl_cfg);
+    } else if (htp->ssl_ctx != NULL) {
+        /* use the global SSL context */
+        htp_vhost->ssl_ctx = htp->ssl_ctx;
+        htp_vhost->ssl_cfg = htp->ssl_cfg;
+    }
+
+    return 0;
+}
+
 int
 rproxy_init(evbase_t * evbase, rproxy_cfg_t * cfg) {
     lztq_elem * serv_elem;
@@ -1112,7 +1188,9 @@ rproxy_init(evbase_t * evbase, rproxy_cfg_t * cfg) {
         server = lztq_elem_data(serv_elem);
         assert(server != NULL);
 
-        /* create a new evhtp base structure for just this server */
+        /* create a new evhtp base structure for just this server, all vhosts
+         * will use this as a parent
+         */
         htp    = evhtp_new(evbase, NULL);
         assert(htp != NULL);
 
@@ -1122,8 +1200,14 @@ rproxy_init(evbase_t * evbase, rproxy_cfg_t * cfg) {
          */
         evhtp_set_pre_accept_cb(htp, upstream_pre_accept, NULL);
 
+        /* for each vhost, create a child virtual host and stick it in our main
+         * evhtp structure.
+         */
+        lztq_for_each(server->vhosts, add_vhost, htp);
+#if 0
         /* for each rule, ccreate a evhtp callback with the defined type */
         lztq_for_each(server->rules, add_callback_rule, htp);
+#endif
 
         if (server->ssl_cfg) {
             /* enable SSL support on this server */
@@ -1304,7 +1388,7 @@ rproxy_set_rlimits(int nofiles) {
 
     if (getrlimit(RLIMIT_NOFILE, &limit) == -1) {
         fprintf(stderr, "Could not obtain curr NOFILE lim: %s\n", strerror(errno));
-        return -1;
+        return 0;
     }
 
     if (nofiles > limit.rlim_max) {
@@ -1317,7 +1401,7 @@ rproxy_set_rlimits(int nofiles) {
     if (nofiles < 10000) {
         fprintf(stderr, "WARNING: %d max-nofiles is very small, this could be bad, lets check...\n", nofiles);
 
-        if (limit.rlim_max >= 10000) {
+        if ((int)limit.rlim_max >= 10000) {
             fprintf(stderr, "INFO: using %d (your hard-limit) on max-nofiles instead of %d!\n", (int)limit.rlim_max, nofiles);
             nofiles = limit.rlim_max;
         } else {
