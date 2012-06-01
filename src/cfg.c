@@ -157,13 +157,6 @@ static cfg_opt_t server_opts[] = {
     CFG_SEC("downstream",           downstream_opts, CFGF_MULTI | CFGF_TITLE | CFGF_NO_TITLE_DUPES),
     CFG_SEC("vhost",                vhost_opts,      CFGF_MULTI | CFGF_TITLE | CFGF_NO_TITLE_DUPES),
     CFG_SEC("ssl",                  ssl_opts,        CFGF_NONE),
-#if 0
-    CFG_SEC("logging",              logging_opts,    CFGF_NONE),
-    CFG_SEC("if-uri-match",         rule_exact_opts, CFGF_TITLE | CFGF_MULTI | CFGF_NO_TITLE_DUPES),
-    CFG_SEC("if-uri-rmatch",        rule_regex_opts, CFGF_TITLE | CFGF_MULTI | CFGF_NO_TITLE_DUPES),
-    CFG_SEC("if-uri-gmatch",        rule_glob_opts,  CFGF_TITLE | CFGF_MULTI | CFGF_NO_TITLE_DUPES),
-    CFG_STR_LIST("hostnames",       NULL,            CFGF_NONE),
-#endif
     CFG_END()
 };
 
@@ -330,13 +323,10 @@ server_cfg_free(void * arg) {
         free(cfg->bind_addr);
     }
 
-#if 0
     if (cfg->ssl_cfg) {
         free(cfg->ssl_cfg);
     }
 
-    lztq_free(cfg->rules);
-#endif
     lztq_free(cfg->vhosts);
     lztq_free(cfg->downstreams);
     free(cfg);
@@ -658,14 +648,12 @@ rule_cfg_parse(cfg_t * cfg) {
     rcfg->headers   = headers_cfg_parse(cfg_getsec(cfg, "headers"));
 
     if (cfg_getopt(cfg, "upstream-read-timeout")) {
-        printf("uhh..\n");
         rcfg->up_read_timeout.tv_sec  = cfg_getnint(cfg, "upstream-read-timeout", 0);
         rcfg->up_read_timeout.tv_usec = cfg_getnint(cfg, "upstream-read-timeout", 1);
         rcfg->has_up_read_timeout     = 1;
     }
 
     if (cfg_getopt(cfg, "upstream-write-timeout")) {
-        printf("uhh..\n");
         rcfg->up_write_timeout.tv_sec  = cfg_getnint(cfg, "upstream-write-timeout", 0);
         rcfg->up_write_timeout.tv_usec = cfg_getnint(cfg, "upstream-write-timeout", 1);
         rcfg->has_up_write_timeout     = 1;
@@ -738,7 +726,6 @@ parse_rule_type_and_append(vhost_cfg_t * vhost, cfg_t * cfg, const char * name) 
             return -1;
         }
 
-        rule->vhost_cfg = vhost;
         elem = lztq_append(list, rule, sizeof(rule), rule_cfg_free);
         assert(elem != NULL);
     }
@@ -836,17 +823,6 @@ server_cfg_parse(cfg_t * cfg) {
         elem = lztq_append(scfg->vhosts, vcfg, sizeof(vcfg), vhost_cfg_free);
         assert(elem != NULL);
     }
-
-#if 0
-    res = parse_rule_type_and_append(scfg->rules, cfg, "if-uri-match");
-    assert(res >= 0);
-
-    res = parse_rule_type_and_append(scfg->rules, cfg, "if-uri-rmatch");
-    assert(res >= 0);
-
-    res = parse_rule_type_and_append(scfg->rules, cfg, "if-uri-gmatch");
-    assert(res >= 0);
-#endif
 
     return scfg;
 } /* server_cfg_parse */

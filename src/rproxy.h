@@ -78,7 +78,6 @@ struct rule_cfg {
     lb_method       lb_method;   /**< method of load-balacinging (defaults to RTT) */
     char          * matchstr;    /**< the uri to match on */
     headers_cfg_t * headers;     /**< headers which are added to the backend request */
-    vhost_cfg_t   * vhost_cfg;   /**< parent virtual host where this rule resides */
     lztq          * downstreams; /**< list of downstream names (as supplied by downstream_cfg_t->name */
     int             has_up_read_timeout;
     int             has_up_write_timeout;
@@ -268,7 +267,7 @@ struct rproxy {
     evbase_t     * evbase;
     event_t      * request_ev;
     server_cfg_t * server_cfg;
-    /* lztq              * rules;       / **< list of all rule_t's * / */
+    lztq              * rules;
     lztq              * downstreams; /**< list of all downstream_t's */
     int                 n_pending;   /**< number of pending requests */
     pending_request_q_t pending;     /**< list of pending upstream request_t's */

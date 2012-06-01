@@ -212,7 +212,7 @@ proxy_parser_headers_complete(htparser * p) {
  *
  * @return 0 on success, -1 on error.
  */
-static int
+int
 proxy_parser_new_chunk(htparser * p) {
     request_t       * request;
     rproxy_t        * rproxy;
@@ -273,7 +273,7 @@ proxy_parser_new_chunk(htparser * p) {
  *
  * @return 0 on success, -1 on error.
  */
-static int
+int
 proxy_parser_chunk_complete(htparser * p) {
     /* an entire chunk has been parsed, send the final CRLF to the upstream */
     request_t       * request;
@@ -332,7 +332,7 @@ proxy_parser_chunk_complete(htparser * p) {
  *
  * @return 0 on success, -1 on error.
  */
-static int
+int
 proxy_parser_chunks_complete(htparser * p) {
     /* all chunks have been parsed, send the terminating 0 and CRLF */
     request_t       * request;
@@ -390,7 +390,7 @@ proxy_parser_chunks_complete(htparser * p) {
  *
  * @return
  */
-static int
+int
 proxy_parser_body(htparser * p, const char * data, size_t len) {
     /* stream parsed body data from the downstream to the upstream */
     request_t       * request;

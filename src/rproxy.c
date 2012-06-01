@@ -265,7 +265,6 @@ send_upstream_headers(evhtp_request_t * upstream_req, evhtp_headers_t * hdrs, vo
     assert(rproxy != NULL);
 
     if (request->pending == 1) {
-        printf("break HERE pending == 1\n");
         abort();
     }
 
@@ -703,18 +702,14 @@ start_downstream(lztq_elem * elem, void * arg) {
  */
 static int
 associate_rule_with_downstreams(lztq_elem * elem, void * arg) {
-    rproxy_t    * rproxy   = arg;
-    rule_cfg_t  * rule_cfg = lztq_elem_data(elem);
-    vhost_cfg_t * vhost_cfg;
-    lztq_elem   * name_elem;
-    lztq_elem   * name_elem_temp;
-    rule_t      * rule;
+    rproxy_t   * rproxy   = arg;
+    rule_cfg_t * rule_cfg = lztq_elem_data(elem);
+    lztq_elem  * name_elem;
+    lztq_elem  * name_elem_temp;
+    rule_t     * rule;
 
     assert(rproxy != NULL);
     assert(rule_cfg != NULL);
-
-    vhost_cfg         = rule_cfg->vhost_cfg;
-    assert(vhost_cfg != NULL);
 
     rule              = calloc(sizeof(rule_t), 1);
     assert(rule != NULL);
@@ -746,7 +741,7 @@ associate_rule_with_downstreams(lztq_elem * elem, void * arg) {
         name_elem_temp = lztq_next(name_elem);
     }
 
-    lztq_append(vhost_cfg->rules, rule, sizeof(rule), NULL);
+    lztq_append(rproxy->rules, rule, sizeof(rule), NULL);
 
     return 0;
 } /* associate_rule_with_downstreams */
@@ -882,14 +877,7 @@ upstream_request_start(evhtp_request_t * up_req, evhtp_path_t * path, void * arg
         return EVHTP_RES_FATAL;
     }
 
-    if (!(vhost_cfg = rule_cfg->vhost_cfg)) {
-        return EVHTP_RES_FATAL;
-    }
-
-    /* find the rule_t from vhost_cfg->rules which matches the rule_cfg so that we
-     * can use the proper downstream when this upstream request is serviced.
-     */
-    if (!(rule = find_rule_from_cfg(rule_cfg, vhost_cfg->rules))) {
+    if (!(rule = find_rule_from_cfg(rule_cfg, rproxy->rules))) {
         return EVHTP_RES_FATAL;
     }
 
@@ -996,11 +984,9 @@ rproxy_thread_init(evhtp_t * htp, evthr_t * thr, void * arg) {
 
     rproxy->downstreams = lztq_new();
     assert(rproxy->downstreams != NULL);
-#if 0
+
     rproxy->rules       = lztq_new();
     assert(rproxy->rules != NULL);
-#endif
-
 
     /* init our pending request tailq */
     TAILQ_INIT(&rproxy->pending);
@@ -1128,15 +1114,6 @@ add_vhost_name(lztq_elem * elem, void * arg) {
     assert(htp_vhost != NULL);
     assert(name != NULL);
 
-#if 0
-    if (TAILQ_EMPTY(&htp_main->vhosts)) {
-        /* we haven't added any vhosts to our main evhtp, so in this case we add
-         * this entry as a vhost.
-         */
-        return evhtp_add_vhost(htp_main, name, htp_vhost);
-    }
-#endif
-
     return evhtp_add_alias(htp_vhost, name);
 }
 
@@ -1204,10 +1181,6 @@ rproxy_init(evbase_t * evbase, rproxy_cfg_t * cfg) {
          * evhtp structure.
          */
         lztq_for_each(server->vhosts, add_vhost, htp);
-#if 0
-        /* for each rule, ccreate a evhtp callback with the defined type */
-        lztq_for_each(server->rules, add_callback_rule, htp);
-#endif
 
         if (server->ssl_cfg) {
             /* enable SSL support on this server */
