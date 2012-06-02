@@ -1014,6 +1014,17 @@ rproxy_thread_init(evhtp_t * htp, evthr_t * thr, void * arg) {
     assert(res == 0);
 
     {
+        /* for each virtual server, iterate over each rule_cfg and create a
+         * rule_t structure.
+         *
+         * Since each of these rule_t's are unique pointers, we append them
+         * to the global rproxy->rules list (evhtp takes care of the vhost
+         * matching, and the rule_cfg is passed as the argument to
+         * upstream_request_start).
+         *
+         * Each rule_t has a downstreams list containing pointers to
+         * (already allocated) downstream_t structures.
+         */
         lztq_elem * vhost_elem = NULL;
         lztq_elem * vhost_temp = NULL;
 
@@ -1026,43 +1037,6 @@ rproxy_thread_init(evhtp_t * htp, evthr_t * thr, void * arg) {
             vhost_temp = lztq_next(vhost_elem);
         }
     }
-#if 0
-    /* Create a rule_t structure from each rule_cfg_t. The logic is as follows:
-     *
-     * Assume a configuration like the following:
-     *
-     * downstream ds_01 {
-     *    addr = 127.0.0.1
-     *    port = 8080
-     * }
-     *
-     * downstream ds_02 {
-     *    addr = 127.0.0.1
-     *    port = 8081
-     * }
-     *
-     * rules {
-     *   if-uri-match '/blah' {
-     *     downstreams = { "ds_01", "ds_02" }
-     *   }
-     * }
-     *
-     * the single rule here will use a connection from both "ds_01" and "ds_02"
-     * to service a request if it matches.
-     *
-     * Since the rproxy_t structure will be available by our request callback
-     * (via the evthr_t's aux data), we create rule_t structures containing a list of
-     * downstream_t pointers that would service the request and append it to
-     * rproxy->rules.
-     *
-     * The userdata argument passed to the request callback is a rule_cfg_t (as
-     * defined in add_callback_rule()). It is now up to the request callback to
-     * match the rule_cfg_t to the rule_t within the rproxy->rules list.
-     *
-     */
-    res = lztq_for_each(server_cfg->rules, associate_rule_with_downstreams, rproxy);
-    assert(res == 0);
-#endif
 
     return;
 } /* rproxy_thread_init */
