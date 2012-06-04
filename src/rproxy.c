@@ -268,6 +268,7 @@ passthrough_eventcb(evbev_t * bev, short events, void * arg) {
 
     ds_conn = request->downstream_conn;
 
+    bufferevent_free(request->upstream_bev);
     downstream_connection_set_down(ds_conn);
 
     request_free(request);
@@ -297,13 +298,18 @@ send_upstream_headers(evhtp_request_t * upstream_req, evhtp_headers_t * hdrs, vo
     rproxy_t       * rproxy;
     evhtp_header_t * connection_hdr;
     evbuf_t        * buf;
+    rule_cfg_t     * rule_cfg;
     char           * query_args;
 
-    assert(arg != NULL);
+    request  = arg;
+    assert(request != NULL);
 
-    request = arg;
-    rproxy  = request->rproxy;
+    rproxy   = request->rproxy;
     assert(rproxy != NULL);
+    assert(request->rule != NULL);
+
+    rule_cfg = request->rule->config;
+    assert(rule_cfg != NULL);
 
     if (request->pending == 1) {
         abort();
@@ -416,8 +422,29 @@ send_upstream_headers(evhtp_request_t * upstream_req, evhtp_headers_t * hdrs, vo
     evhtp_headers_for_each(hdrs, write_header_to_evbuffer, buf);
 
     evbuffer_add(buf, "\r\n", 2);
-    bufferevent_write_buffer(request->downstream_conn->connection, buf);
+    bufferevent_write_buffer(request->downstream_bev, buf);
     evbuffer_free(buf);
+
+    if (rule_cfg->passthrough == true) {
+        /* rule configured to be passthrough, so we take ownership of the
+         * bufferevent and ignore any state based processing of the request.
+         * This allows for non-http specific protocols to flow such as
+         * websocket.
+         */
+        evbev_t * bev;
+
+        bev = evhtp_connection_take_ownership(evhtp_request_get_connection(upstream_req));
+        assert(bev != NULL);
+
+        bufferevent_enable(bev, EV_READ | EV_WRITE);
+        bufferevent_setcb(bev,
+                          passthrough_readcb,
+                          passthrough_writecb,
+                          passthrough_eventcb, request);
+
+        return EVHTP_RES_USER;
+    }
+
 
     return EVHTP_RES_OK;
 } /* send_upstream_headers */
@@ -958,42 +985,37 @@ upstream_request_start(evhtp_request_t * up_req, evhtp_path_t * path, void * arg
         evtimer_add(ds_req->pending_ev, &serv_cfg->pending_timeout);
     }
 
-    /* if passthrough is enabled on this rule, we do not need to setup any
-     * hooks. All IO through the upstream and downstream are stateless.
+    /* Since this is called after a path match, we set upstream request
+     * specific evhtp hooks specific to this request. This is done in order
+     * to stream the upstream data directly to the downstream and allow for
+     * the modification of the request made to the downstream.
      */
-    if (rule_cfg->passthrough == false) {
-        /* Since this is called after a path match, we set upstream request
-         * specific evhtp hooks specific to this request. This is done in order
-         * to stream the upstream data directly to the downstream and allow for
-         * the modification of the request made to the downstream.
-         */
 
-        /* call this function once all headers from the upstream have been parsed */
-        evhtp_set_hook(&up_req->hooks, evhtp_hook_on_headers,
-                       send_upstream_headers, ds_req);
+    /* call this function once all headers from the upstream have been parsed */
+    evhtp_set_hook(&up_req->hooks, evhtp_hook_on_headers,
+                   send_upstream_headers, ds_req);
 
-        evhtp_set_hook(&up_req->hooks, evhtp_hook_on_new_chunk,
-                       send_upstream_new_chunk, ds_req);
+    evhtp_set_hook(&up_req->hooks, evhtp_hook_on_new_chunk,
+                   send_upstream_new_chunk, ds_req);
 
-        evhtp_set_hook(&up_req->hooks, evhtp_hook_on_chunk_complete,
-                       send_upstream_chunk_done, ds_req);
+    evhtp_set_hook(&up_req->hooks, evhtp_hook_on_chunk_complete,
+                   send_upstream_chunk_done, ds_req);
 
-        evhtp_set_hook(&up_req->hooks, evhtp_hook_on_chunks_complete,
-                       send_upstream_chunks_done, ds_req);
+    evhtp_set_hook(&up_req->hooks, evhtp_hook_on_chunks_complete,
+                   send_upstream_chunks_done, ds_req);
 
-        /* call this function if the upstream request contains a body */
-        evhtp_set_hook(&up_req->hooks, evhtp_hook_on_read,
-                       send_upstream_body, ds_req);
+    /* call this function if the upstream request contains a body */
+    evhtp_set_hook(&up_req->hooks, evhtp_hook_on_read,
+                   send_upstream_body, ds_req);
 
-        /* call this function after the upstream request has been marked as complete
-         */
-        evhtp_set_hook(&up_req->hooks, evhtp_hook_on_request_fini,
-                       upstream_fini, ds_req);
+    /* call this function after the upstream request has been marked as complete
+     */
+    evhtp_set_hook(&up_req->hooks, evhtp_hook_on_request_fini,
+                   upstream_fini, ds_req);
 
-        /* call this function if the upstream request encounters a socket error */
-        evhtp_set_hook(&up_req->hooks, evhtp_hook_on_error,
-                       upstream_error, ds_req);
-    }
+    /* call this function if the upstream request encounters a socket error */
+    evhtp_set_hook(&up_req->hooks, evhtp_hook_on_error,
+                   upstream_error, ds_req);
 
     /* insert this request into our pending queue and signal processor event */
     TAILQ_INSERT_TAIL(&rproxy->pending, ds_req, next);
@@ -1287,37 +1309,10 @@ rproxy_process_pending(int fd, short which, void * arg) {
             evtimer_del(request->pending_ev);
         }
 
-        us_req   = request->upstream_request;
-        assert(us_req != NULL);
-
-        us_conn  = evhtp_request_get_connection(us_req);
-        assert(us_conn != NULL);
-
-        rule_cfg = request->rule->config;
-        assert(rule_cfg != NULL);
-
-        if (rule_cfg->passthrough == true) {
-            /* rule configured to be passthrough, so we take ownership of the
-             * bufferevent and ignore any state based processing of the request.
-             * This allows for non-http specific protocols to flow such as
-             * websocket.
-             */
-            evbev_t * bev;
-
-            bev = evhtp_connection_take_ownership(us_conn);
-            assert(bev != NULL);
-
-            bufferevent_enable(bev, EV_READ | EV_WRITE);
-            bufferevent_setcb(bev,
-                              passthrough_readcb,
-                              passthrough_writecb,
-                              passthrough_eventcb, request);
-        } else {
-            /* since the upstream request processing has been paused, we must
-             * unpause it to process it.
-             */
-            evhtp_request_resume(request->upstream_request);
-        }
+        /* since the upstream request processing has been paused, we must
+         * unpause it to process it.
+         */
+        evhtp_request_resume(request->upstream_request);
     }
 } /* rproxy_process_pending */
 
