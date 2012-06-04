@@ -232,6 +232,47 @@ append_x_headers(headers_cfg_t * headers_cfg, evhtp_request_t * upstream_req) {
     return 0;
 } /* append_x_headers */
 
+/**
+ * @brief data was read from an upstream connection, pass it down to the
+ * downstream.
+ *
+ * @param bev
+ * @param arg
+ */
+void
+passthrough_readcb(evbev_t * bev, void * arg) {
+    request_t * request;
+
+    request = arg;
+    assert(request != NULL);
+
+    /* write the data read from the upstream bufferevent to the downstream
+     * bufferevent.
+     */
+    bufferevent_write_buffer(request->downstream_bev, bufferevent_get_input(bev));
+}
+
+void
+passthrough_writecb(evbev_t * bev, void * arg) {
+    return;
+}
+
+void
+passthrough_eventcb(evbev_t * bev, short events, void * arg) {
+    int              res;
+    request_t      * request;
+    downstream_c_t * ds_conn;
+
+    request = arg;
+    assert(request != NULL);
+
+    ds_conn = request->downstream_conn;
+
+    downstream_connection_set_down(ds_conn);
+
+    request_free(request);
+}
+
 int
 write_header_to_evbuffer(evhtp_header_t * header, void * arg) {
     evbuf_t * buf;
@@ -881,17 +922,19 @@ upstream_request_start(evhtp_request_t * up_req, evhtp_path_t * path, void * arg
         return EVHTP_RES_FATAL;
     }
 
-    serv_cfg                 = rproxy->server_cfg;
+    serv_cfg = rproxy->server_cfg;
     assert(serv_cfg != NULL);
 
-    ds_req                   = request_new(rproxy);
+    ds_req   = request_new(rproxy);
     assert(ds_req != NULL);
 
-    up_conn                  = evhtp_request_get_connection(up_req);
+    up_conn  = evhtp_request_get_connection(up_req);
     assert(up_conn != NULL);
 
+    ds_req->upstream_bev     = evhtp_request_get_bev(up_req);
+    ds_req->downstream_bev   = NULL;
     ds_req->upstream_request = up_req;
-    ds_req->rule             = rule;
+    ds_req->rule = rule;
     ds_req->pending          = 1;
     rproxy->n_pending       += 1;
 
@@ -915,37 +958,42 @@ upstream_request_start(evhtp_request_t * up_req, evhtp_path_t * path, void * arg
         evtimer_add(ds_req->pending_ev, &serv_cfg->pending_timeout);
     }
 
-    /* Since this is called after a path match, we set upstream request
-     * specific evhtp hooks specific to this request. This is done in order
-     * to stream the upstream data directly to the downstream and allow for
-     * the modification of the request made to the downstream.
+    /* if passthrough is enabled on this rule, we do not need to setup any
+     * hooks. All IO through the upstream and downstream are stateless.
      */
+    if (rule_cfg->passthrough == false) {
+        /* Since this is called after a path match, we set upstream request
+         * specific evhtp hooks specific to this request. This is done in order
+         * to stream the upstream data directly to the downstream and allow for
+         * the modification of the request made to the downstream.
+         */
 
-    /* call this function once all headers from the upstream have been parsed */
-    evhtp_set_hook(&up_req->hooks, evhtp_hook_on_headers,
-                   send_upstream_headers, ds_req);
+        /* call this function once all headers from the upstream have been parsed */
+        evhtp_set_hook(&up_req->hooks, evhtp_hook_on_headers,
+                       send_upstream_headers, ds_req);
 
-    evhtp_set_hook(&up_req->hooks, evhtp_hook_on_new_chunk,
-                   send_upstream_new_chunk, ds_req);
+        evhtp_set_hook(&up_req->hooks, evhtp_hook_on_new_chunk,
+                       send_upstream_new_chunk, ds_req);
 
-    evhtp_set_hook(&up_req->hooks, evhtp_hook_on_chunk_complete,
-                   send_upstream_chunk_done, ds_req);
+        evhtp_set_hook(&up_req->hooks, evhtp_hook_on_chunk_complete,
+                       send_upstream_chunk_done, ds_req);
 
-    evhtp_set_hook(&up_req->hooks, evhtp_hook_on_chunks_complete,
-                   send_upstream_chunks_done, ds_req);
+        evhtp_set_hook(&up_req->hooks, evhtp_hook_on_chunks_complete,
+                       send_upstream_chunks_done, ds_req);
 
-    /* call this function if the upstream request contains a body */
-    evhtp_set_hook(&up_req->hooks, evhtp_hook_on_read,
-                   send_upstream_body, ds_req);
+        /* call this function if the upstream request contains a body */
+        evhtp_set_hook(&up_req->hooks, evhtp_hook_on_read,
+                       send_upstream_body, ds_req);
 
-    /* call this function after the upstream request has been marked as complete
-     */
-    evhtp_set_hook(&up_req->hooks, evhtp_hook_on_request_fini,
-                   upstream_fini, ds_req);
+        /* call this function after the upstream request has been marked as complete
+         */
+        evhtp_set_hook(&up_req->hooks, evhtp_hook_on_request_fini,
+                       upstream_fini, ds_req);
 
-    /* call this function if the upstream request encounters a socket error */
-    evhtp_set_hook(&up_req->hooks, evhtp_hook_on_error,
-                   upstream_error, ds_req);
+        /* call this function if the upstream request encounters a socket error */
+        evhtp_set_hook(&up_req->hooks, evhtp_hook_on_error,
+                       upstream_error, ds_req);
+    }
 
     /* insert this request into our pending queue and signal processor event */
     TAILQ_INSERT_TAIL(&rproxy->pending, ds_req, next);
@@ -1210,6 +1258,10 @@ rproxy_process_pending(int fd, short which, void * arg) {
     assert(rproxy != NULL);
 
     for (request = TAILQ_FIRST(&rproxy->pending); request; request = save) {
+        evhtp_request_t    * us_req;
+        evhtp_connection_t * us_conn;
+        rule_cfg_t         * rule_cfg;
+
         save = TAILQ_NEXT(request, next);
 
         if (!(request->downstream_conn = downstream_connection_get(request->rule))) {
@@ -1225,6 +1277,7 @@ rproxy_process_pending(int fd, short which, void * arg) {
         /* remove this request from the pending queue */
         TAILQ_REMOVE(&rproxy->pending, request, next);
 
+        request->downstream_bev           = request->downstream_conn->connection;
         request->downstream_conn->request = request;
         request->pending   = 0;
         rproxy->n_pending -= 1;
@@ -1234,13 +1287,39 @@ rproxy_process_pending(int fd, short which, void * arg) {
             evtimer_del(request->pending_ev);
         }
 
+        us_req   = request->upstream_request;
+        assert(us_req != NULL);
 
-        /* since the upstream request processing has been paused, we must
-         * unpause it to process it.
-         */
-        evhtp_request_resume(request->upstream_request);
+        us_conn  = evhtp_request_get_connection(us_req);
+        assert(us_conn != NULL);
+
+        rule_cfg = request->rule->config;
+        assert(rule_cfg != NULL);
+
+        if (rule_cfg->passthrough == true) {
+            /* rule configured to be passthrough, so we take ownership of the
+             * bufferevent and ignore any state based processing of the request.
+             * This allows for non-http specific protocols to flow such as
+             * websocket.
+             */
+            evbev_t * bev;
+
+            bev = evhtp_connection_take_ownership(us_conn);
+            assert(bev != NULL);
+
+            bufferevent_enable(bev, EV_READ | EV_WRITE);
+            bufferevent_setcb(bev,
+                              passthrough_readcb,
+                              passthrough_writecb,
+                              passthrough_eventcb, request);
+        } else {
+            /* since the upstream request processing has been paused, we must
+             * unpause it to process it.
+             */
+            evhtp_request_resume(request->upstream_request);
+        }
     }
-}
+} /* rproxy_process_pending */
 
 static void
 rproxy_dropperms(const char * user, const char * group) {

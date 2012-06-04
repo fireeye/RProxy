@@ -79,6 +79,7 @@ struct rule_cfg {
     char          * matchstr;    /**< the uri to match on */
     headers_cfg_t * headers;     /**< headers which are added to the backend request */
     lztq          * downstreams; /**< list of downstream names (as supplied by downstream_cfg_t->name */
+    bool            passthrough;
     int             has_up_read_timeout;
     int             has_up_write_timeout;
     struct timeval  up_read_timeout;
@@ -209,6 +210,8 @@ struct request {
     rule_t          * rule;              /**< the matched rule */
     htparser        * parser;            /**< htparser for responses from the downstream */
     event_t         * pending_ev;        /**< event timer for pending status */
+    evbev_t         * upstream_bev;
+    evbev_t         * downstream_bev;
 
     uint8_t error;                       /**< set of downstream returns some type of error */
     uint8_t upstream_err;                /**< set if the upstream encountered a socket error */
@@ -263,10 +266,10 @@ struct rule {
 TAILQ_HEAD(pending_request_q, request);
 
 struct rproxy {
-    evhtp_t      * htp;
-    evbase_t     * evbase;
-    event_t      * request_ev;
-    server_cfg_t * server_cfg;
+    evhtp_t           * htp;
+    evbase_t          * evbase;
+    event_t           * request_ev;
+    server_cfg_t      * server_cfg;
     lztq              * rules;
     lztq              * downstreams; /**< list of all downstream_t's */
     int                 n_pending;   /**< number of pending requests */
