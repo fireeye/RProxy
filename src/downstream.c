@@ -983,7 +983,6 @@ downstream_connection_writecb(evbev_t * bev, void * arg) {
 
     assert(connection != NULL);
 
-    printf("downstream writecb\n");
 #ifdef RPROXY_DEBUG
 #ifdef  RPROXY_CRAZY_DEBUG
     printf("writecb: conn=%p, dstream=%p, rproxy=%p, request=%p\n",
@@ -1132,7 +1131,6 @@ downstream_connection_readcb(evbev_t * bev, void * arg) {
     struct timeval   diff;
     int              res;
 
-    printf("downstream_readcb\n");
     assert(arg != NULL);
 
     connection = arg;
