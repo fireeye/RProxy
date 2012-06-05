@@ -15,7 +15,7 @@ ExternalProject_Add (
 set (SSL_DSWITCH "")
 
 if (NOT APPLE)
-	if (${CMAKE_BUILD_TYPE} matches "Debug.*")
+	if (${CMAKE_BUILD_TYPE} matches "Debug")
 		set (SSL_DSWITCH "-d")
 	endif()
 
@@ -29,7 +29,7 @@ if (NOT APPLE)
 		INSTALL_COMMAND make install_sw
 	)
 else()
-	if (${CMAKE_BUILD_TYPE} MATCHES "Debug.*")
+	if (${CMAKE_BUILD_TYPE} MATCHES "Debug")
 		set (SSL_DSWITCH "-g3 -O0")
 	endif()
 

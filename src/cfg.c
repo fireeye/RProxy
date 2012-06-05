@@ -264,7 +264,9 @@ vhost_cfg_new(void) {
 }
 
 void
-vhost_cfg_free(vhost_cfg_t * cfg) {
+vhost_cfg_free(void * arg) {
+    vhost_cfg_t * cfg = arg;
+
     if (!cfg) {
         return;
     }
