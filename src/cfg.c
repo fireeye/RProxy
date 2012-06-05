@@ -87,51 +87,30 @@ static cfg_opt_t headers_opts[] = {
 /* uri match options all share a commen set of configuration options, the only
  * difference is the hidden 'match-type' option is set per cfg_opt_t
  */
-#define CFG_URI_MATCH_OPTS()                           \
-    CFG_STR_LIST("downstreams", NULL, CFGF_NODEFAULT), \
-    CFG_STR("lb-method", "rtt", CFGF_NONE),            \
-    CFG_STR("rewrite", NULL, CFGF_NONE),               \
-    CFG_SEC("headers", headers_opts, CFGF_NONE)
+#define CFG_URI_MATCH_OPTS()                                      \
+    CFG_STR_LIST("downstreams", NULL, CFGF_NODEFAULT),            \
+    CFG_STR("lb-method", "rtt", CFGF_NONE),                       \
+    CFG_STR("rewrite", NULL, CFGF_NONE),                          \
+    CFG_SEC("headers", headers_opts, CFGF_NONE),                  \
+    CFG_INT_LIST("upstream-read-timeout", NULL, CFGF_NODEFAULT),  \
+    CFG_INT_LIST("upstream-write-timeout", NULL, CFGF_NODEFAULT), \
+    CFG_BOOL("passthrough", cfg_false, CFGF_NONE)
 
 static cfg_opt_t rule_exact_opts[] = {
-    CFG_INT("type",                        rule_type_exact, CFGF_NONE),
-    CFG_STR_LIST("downstreams",            NULL,            CFGF_NODEFAULT),
-    CFG_STR("lb-method",                   "rtt",           CFGF_NONE),
-    CFG_STR("rewrite",                     NULL,            CFGF_NONE),
-    CFG_SEC("headers",                     headers_opts,    CFGF_NONE),
-    CFG_INT_LIST("upstream-read-timeout",  NULL,            CFGF_NODEFAULT),
-    CFG_INT_LIST("upstream-write-timeout", NULL,            CFGF_NODEFAULT),
-
+    CFG_INT("type",       rule_type_exact, CFGF_NONE),
+    CFG_URI_MATCH_OPTS(),
     CFG_END()
 };
 
 static cfg_opt_t rule_regex_opts[] = {
-    CFG_STR_LIST("downstreams",            NULL,            CFGF_NODEFAULT),
-    CFG_STR("lb-method",                   "rtt",           CFGF_NONE),
-    CFG_STR("rewrite",                     NULL,            CFGF_NONE),
-    CFG_SEC("headers",                     headers_opts,    CFGF_NONE),
-    CFG_INT("type",                        rule_type_regex, CFGF_NONE),
-    CFG_INT_LIST("upstream-read-timeout",  NULL,            CFGF_NODEFAULT),
-    CFG_INT_LIST("upstream-write-timeout", NULL,            CFGF_NODEFAULT),
-
+    CFG_INT("type",       rule_type_regex, CFGF_NONE),
+    CFG_URI_MATCH_OPTS(),
     CFG_END()
 };
 
 static cfg_opt_t rule_glob_opts[] = {
-    CFG_STR_LIST("downstreams",            NULL,           CFGF_NODEFAULT),
-    CFG_STR("lb-method",                   "rtt",          CFGF_NONE),
-    CFG_STR("rewrite",                     NULL,           CFGF_NONE),
-    CFG_SEC("headers",                     headers_opts,   CFGF_NONE),
-    CFG_INT("type",                        rule_type_glob, CFGF_NONE),
-    CFG_INT_LIST("upstream-read-timeout",  NULL,           CFGF_NODEFAULT),
-    CFG_INT_LIST("upstream-write-timeout", NULL,           CFGF_NODEFAULT),
-    CFG_END()
-};
-
-static cfg_opt_t rule_opts[] = {
-    CFG_SEC("if-uri-match",  rule_exact_opts, CFGF_TITLE | CFGF_MULTI),
-    CFG_SEC("if-uri-rmatch", rule_regex_opts, CFGF_TITLE | CFGF_MULTI),
-    CFG_SEC("if-uri-gmatch", rule_glob_opts,  CFGF_TITLE | CFGF_MULTI),
+    CFG_INT("type",       rule_type_glob, CFGF_NONE),
+    CFG_URI_MATCH_OPTS(),
     CFG_END()
 };
 
@@ -639,13 +618,14 @@ rule_cfg_parse(cfg_t * cfg) {
 
     assert(cfg != NULL);
 
-    rcfg            = rule_cfg_new();
+    rcfg              = rule_cfg_new();
     assert(cfg != NULL);
 
-    rcfg->type      = cfg_getint(cfg, "type");
-    rcfg->matchstr  = strdup(cfg_title(cfg));
-    rcfg->lb_method = lbstr_to_lbtype(cfg_getstr(cfg, "lb-method"));
-    rcfg->headers   = headers_cfg_parse(cfg_getsec(cfg, "headers"));
+    rcfg->type        = cfg_getint(cfg, "type");
+    rcfg->matchstr    = strdup(cfg_title(cfg));
+    rcfg->lb_method   = lbstr_to_lbtype(cfg_getstr(cfg, "lb-method"));
+    rcfg->headers     = headers_cfg_parse(cfg_getsec(cfg, "headers"));
+    rcfg->passthrough = cfg_getbool(cfg, "passthrough");
 
     if (cfg_getopt(cfg, "upstream-read-timeout")) {
         rcfg->up_read_timeout.tv_sec  = cfg_getnint(cfg, "upstream-read-timeout", 0);

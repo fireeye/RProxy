@@ -232,6 +232,48 @@ append_x_headers(headers_cfg_t * headers_cfg, evhtp_request_t * upstream_req) {
     return 0;
 } /* append_x_headers */
 
+/**
+ * @brief data was read from an upstream connection, pass it down to the
+ * downstream.
+ *
+ * @param bev
+ * @param arg
+ */
+void
+passthrough_readcb(evbev_t * bev, void * arg) {
+    request_t * request;
+
+    request = arg;
+    assert(request != NULL);
+
+    /* write the data read from the upstream bufferevent to the downstream
+     * bufferevent.
+     */
+    bufferevent_write_buffer(request->downstream_bev, bufferevent_get_input(bev));
+}
+
+void
+passthrough_writecb(evbev_t * bev, void * arg) {
+    return;
+}
+
+void
+passthrough_eventcb(evbev_t * bev, short events, void * arg) {
+    int              res;
+    request_t      * request;
+    downstream_c_t * ds_conn;
+
+    request = arg;
+    assert(request != NULL);
+
+    ds_conn = request->downstream_conn;
+
+    bufferevent_free(request->upstream_bev);
+    downstream_connection_set_down(ds_conn);
+
+    request_free(request);
+}
+
 int
 write_header_to_evbuffer(evhtp_header_t * header, void * arg) {
     evbuf_t * buf;
@@ -256,13 +298,18 @@ send_upstream_headers(evhtp_request_t * upstream_req, evhtp_headers_t * hdrs, vo
     rproxy_t       * rproxy;
     evhtp_header_t * connection_hdr;
     evbuf_t        * buf;
+    rule_cfg_t     * rule_cfg;
     char           * query_args;
 
-    assert(arg != NULL);
+    request  = arg;
+    assert(request != NULL);
 
-    request = arg;
-    rproxy  = request->rproxy;
+    rproxy   = request->rproxy;
     assert(rproxy != NULL);
+    assert(request->rule != NULL);
+
+    rule_cfg = request->rule->config;
+    assert(rule_cfg != NULL);
 
     if (request->pending == 1) {
         abort();
@@ -375,8 +422,29 @@ send_upstream_headers(evhtp_request_t * upstream_req, evhtp_headers_t * hdrs, vo
     evhtp_headers_for_each(hdrs, write_header_to_evbuffer, buf);
 
     evbuffer_add(buf, "\r\n", 2);
-    bufferevent_write_buffer(request->downstream_conn->connection, buf);
+    bufferevent_write_buffer(request->downstream_bev, buf);
     evbuffer_free(buf);
+
+    if (rule_cfg->passthrough == true) {
+        /* rule configured to be passthrough, so we take ownership of the
+         * bufferevent and ignore any state based processing of the request.
+         * This allows for non-http specific protocols to flow such as
+         * websocket.
+         */
+        evbev_t * bev;
+
+        bev = evhtp_connection_take_ownership(evhtp_request_get_connection(upstream_req));
+        assert(bev != NULL);
+
+        bufferevent_enable(bev, EV_READ | EV_WRITE);
+        bufferevent_setcb(bev,
+                          passthrough_readcb,
+                          passthrough_writecb,
+                          passthrough_eventcb, request);
+
+        return EVHTP_RES_USER;
+    }
+
 
     return EVHTP_RES_OK;
 } /* send_upstream_headers */
@@ -881,17 +949,19 @@ upstream_request_start(evhtp_request_t * up_req, evhtp_path_t * path, void * arg
         return EVHTP_RES_FATAL;
     }
 
-    serv_cfg                 = rproxy->server_cfg;
+    serv_cfg = rproxy->server_cfg;
     assert(serv_cfg != NULL);
 
-    ds_req                   = request_new(rproxy);
+    ds_req   = request_new(rproxy);
     assert(ds_req != NULL);
 
-    up_conn                  = evhtp_request_get_connection(up_req);
+    up_conn  = evhtp_request_get_connection(up_req);
     assert(up_conn != NULL);
 
+    ds_req->upstream_bev     = evhtp_request_get_bev(up_req);
+    ds_req->downstream_bev   = NULL;
     ds_req->upstream_request = up_req;
-    ds_req->rule             = rule;
+    ds_req->rule = rule;
     ds_req->pending          = 1;
     rproxy->n_pending       += 1;
 
@@ -1210,6 +1280,10 @@ rproxy_process_pending(int fd, short which, void * arg) {
     assert(rproxy != NULL);
 
     for (request = TAILQ_FIRST(&rproxy->pending); request; request = save) {
+        evhtp_request_t    * us_req;
+        evhtp_connection_t * us_conn;
+        rule_cfg_t         * rule_cfg;
+
         save = TAILQ_NEXT(request, next);
 
         if (!(request->downstream_conn = downstream_connection_get(request->rule))) {
@@ -1225,6 +1299,7 @@ rproxy_process_pending(int fd, short which, void * arg) {
         /* remove this request from the pending queue */
         TAILQ_REMOVE(&rproxy->pending, request, next);
 
+        request->downstream_bev           = request->downstream_conn->connection;
         request->downstream_conn->request = request;
         request->pending   = 0;
         rproxy->n_pending -= 1;
@@ -1234,13 +1309,12 @@ rproxy_process_pending(int fd, short which, void * arg) {
             evtimer_del(request->pending_ev);
         }
 
-
         /* since the upstream request processing has been paused, we must
          * unpause it to process it.
          */
         evhtp_request_resume(request->upstream_request);
     }
-}
+} /* rproxy_process_pending */
 
 static void
 rproxy_dropperms(const char * user, const char * group) {

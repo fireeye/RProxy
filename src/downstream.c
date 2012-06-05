@@ -983,6 +983,7 @@ downstream_connection_writecb(evbev_t * bev, void * arg) {
 
     assert(connection != NULL);
 
+    printf("downstream writecb\n");
 #ifdef RPROXY_DEBUG
 #ifdef  RPROXY_CRAZY_DEBUG
     printf("writecb: conn=%p, dstream=%p, rproxy=%p, request=%p\n",
@@ -1011,7 +1012,7 @@ downstream_connection_writecb(evbev_t * bev, void * arg) {
     }
 
     return;
-}
+} /* downstream_connection_writecb */
 
 /**
  * @brief called when a downstream has either successfully been connect()'d or
@@ -1124,12 +1125,14 @@ downstream_connection_readcb(evbev_t * bev, void * arg) {
     rproxy_t       * rproxy;
     request_t      * request;
     evbuf_t        * evbuf;
+    rule_cfg_t     * rule_cfg;
     void           * buf;
     size_t           avail;
     size_t           nread;
     struct timeval   diff;
     int              res;
 
+    printf("downstream_readcb\n");
     assert(arg != NULL);
 
     connection = arg;
@@ -1139,21 +1142,26 @@ downstream_connection_readcb(evbev_t * bev, void * arg) {
     rproxy     = downstream->rproxy;
     assert(rproxy != NULL);
 
-    if (!(request = connection->request)) {
-        /* XXX: technically we should never see this, deal with this as an error maybe? */
+    request    = connection->request;
+    assert(request != NULL);
 
-        /* we were signaled to read from the downstream, yet no request
-         * has been associated with this connection, so we drain the input
-         * buffers and return immediately.
+    rule_cfg   = request->rule->config;
+    assert(rule_cfg != NULL);
+
+    evbuf      = bufferevent_get_input(bev);
+    assert(evbuf != NULL);
+
+    if (rule_cfg->passthrough == true) {
+        /* passthrough enabled, just write the data from the downstream back to
+         * the upstream.
          */
-        evbuffer_drain(bufferevent_get_input(bev), -1);
-        evbuffer_drain(bufferevent_get_output(bev), -1);
 
-        downstream_connection_set_down(connection);
+        /* write the data that came from the downstream to the upstream */
+        bufferevent_write_buffer(request->upstream_bev, bufferevent_get_input(bev));
+
         return;
     }
 
-    evbuf = bufferevent_get_input(bev);
     avail = evbuffer_get_length(evbuf);
     buf   = evbuffer_pullup(evbuf, avail);
 
