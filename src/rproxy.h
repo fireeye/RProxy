@@ -26,6 +26,7 @@
 #include <evhtp.h>
 
 #include "lzq.h"
+#include "lzlog.h"
 
 #define RPROXY_VERSION "1.0.21"
 
@@ -41,12 +42,6 @@
 * configuration structure definitions
 ************************************************/
 
-enum log_type {
-    log_type_file,
-    log_type_fd,
-    log_type_syslog
-};
-
 enum rule_type {
     rule_type_exact,
     rule_type_regex,
@@ -61,6 +56,11 @@ enum lb_method {
     lb_method_none
 };
 
+enum log_type {
+    log_type_file = 0,
+    log_type_syslog
+};
+
 typedef struct rproxy_cfg     rproxy_cfg_t;
 typedef struct rule_cfg       rule_cfg_t;
 typedef struct vhost_cfg      vhost_cfg_t;
@@ -68,10 +68,19 @@ typedef struct server_cfg     server_cfg_t;
 typedef struct downstream_cfg downstream_cfg_t;
 typedef struct headers_cfg    headers_cfg_t;
 typedef struct x509_ext_cfg   x509_ext_cfg_t;
+typedef struct log_cfg        log_cfg_t;
 
-typedef enum log_type         log_type;
 typedef enum rule_type        rule_type;
 typedef enum lb_method        lb_method;
+typedef enum log_type         log_type;
+
+struct log_cfg {
+    lzlog_level level;
+    log_type    type;
+    char      * path;
+    char      * format;
+    int         facility;
+};
 
 struct rule_cfg {
     rule_type       type;        /**< what type of rule this is (regex/exact/glob) */
@@ -135,7 +144,8 @@ struct vhost_cfg {
     lztq            * rules;        /* list of rule_t's */
     char            * server_name;
     lztq            * aliases;
-    /* log_cfg_t       * log_cfg; */
+    log_cfg_t       * req_log;      /* request logging configuration */
+    log_cfg_t       * err_log;      /* error logging configuration */
 };
 
 /**
@@ -155,10 +165,6 @@ struct server_cfg {
     evhtp_ssl_cfg_t * ssl_cfg;      /**< if enabled, the ssl configuration */
     lztq            * downstreams;  /**< list of downstream_cfg_t's */
     lztq            * vhosts;       /**< list of vhost_cfg_t's */
-#if 0
-    /* log_cfg_t       * log_cfg; */
-    lztq * rules;                   /**< list of rule_cfg_t's */
-#endif
 };
 
 
@@ -166,12 +172,13 @@ struct server_cfg {
  * @brief main configuration structure.
  */
 struct rproxy_cfg {
-    bool   daemonize;               /**< should proxy run in background */
-    int    max_nofile;              /**< max number of open file descriptors */
-    char * rootdir;                 /**< root dir to daemonize */
-    char * user;                    /**< user to run as */
-    char * group;                   /**< group to run as */
-    lztq * servers;                 /**< list of server_cfg_t's */
+    bool        daemonize;          /**< should proxy run in background */
+    int         max_nofile;         /**< max number of open file descriptors */
+    char      * rootdir;            /**< root dir to daemonize */
+    char      * user;               /**< user to run as */
+    char      * group;              /**< group to run as */
+    lztq      * servers;            /**< list of server_cfg_t's */
+    log_cfg_t * log;                /**< generic log configuration */
 };
 
 /********************************************
