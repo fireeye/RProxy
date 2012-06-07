@@ -55,5 +55,7 @@ void    lzlog_free(lzlog * log);
 lzlog * lzlog_file_new(const char * file, const char * ident, int opts);
 lzlog * lzlog_syslog_new(const char * ident, int opts, int facility);
 
+void    lzlog_set_level(lzlog * log, lzlog_level level);
+
 #endif
 

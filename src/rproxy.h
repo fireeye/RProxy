@@ -56,9 +56,9 @@ enum lb_method {
     lb_method_none
 };
 
-enum log_type {
-    log_type_file = 0,
-    log_type_syslog
+enum logger_type {
+    logger_type_file = 0,
+    logger_type_syslog
 };
 
 typedef struct rproxy_cfg     rproxy_cfg_t;
@@ -68,15 +68,15 @@ typedef struct server_cfg     server_cfg_t;
 typedef struct downstream_cfg downstream_cfg_t;
 typedef struct headers_cfg    headers_cfg_t;
 typedef struct x509_ext_cfg   x509_ext_cfg_t;
-typedef struct log_cfg        log_cfg_t;
+typedef struct logger_cfg     logger_cfg_t;
 
 typedef enum rule_type        rule_type;
 typedef enum lb_method        lb_method;
-typedef enum log_type         log_type;
+typedef enum logger_type      logger_type;
 
-struct log_cfg {
+struct logger_cfg {
     lzlog_level level;
-    log_type    type;
+    logger_type type;
     char      * path;
     char      * format;
     int         facility;
@@ -144,8 +144,8 @@ struct vhost_cfg {
     lztq            * rules;        /* list of rule_t's */
     char            * server_name;
     lztq            * aliases;
-    log_cfg_t       * req_log;      /* request logging configuration */
-    log_cfg_t       * err_log;      /* error logging configuration */
+    logger_cfg_t    * req_log;      /* request logging configuration */
+    logger_cfg_t    * err_log;      /* error logging configuration */
 };
 
 /**
@@ -172,13 +172,13 @@ struct server_cfg {
  * @brief main configuration structure.
  */
 struct rproxy_cfg {
-    bool        daemonize;          /**< should proxy run in background */
-    int         max_nofile;         /**< max number of open file descriptors */
-    char      * rootdir;            /**< root dir to daemonize */
-    char      * user;               /**< user to run as */
-    char      * group;              /**< group to run as */
-    lztq      * servers;            /**< list of server_cfg_t's */
-    log_cfg_t * log;                /**< generic log configuration */
+    bool           daemonize;       /**< should proxy run in background */
+    int            max_nofile;      /**< max number of open file descriptors */
+    char         * rootdir;         /**< root dir to daemonize */
+    char         * user;            /**< user to run as */
+    char         * group;           /**< group to run as */
+    lztq         * servers;         /**< list of server_cfg_t's */
+    logger_cfg_t * log;             /**< generic log configuration */
 };
 
 /********************************************
@@ -195,16 +195,54 @@ enum downstream_status {
     downstream_status_down          /**< connection is down and cannot be used */
 };
 
+enum logger_argtype {
+    logger_argtype_nil = 0,
+    logger_argtype_src,
+    logger_argtype_proxy,
+    logger_argtype_ts,
+    logger_argtype_ua,
+    logger_argtype_meth,
+    logger_argtype_uri,
+    logger_argtype_proto,
+    logger_argtype_status,
+    logger_argtype_ref,
+    logger_argtype_host,
+    logger_argtype_ds_sport,
+    logger_argtype_us_sport,
+    logger_argtype_us_hdrval,
+    logger_argtype_ds_hdrval,
+    logger_argtype_printable
+};
+
 typedef struct rproxy            rproxy_t;
 typedef struct downstream        downstream_t;
 typedef struct downstream_c      downstream_c_t;
 typedef struct request           request_t;
 typedef struct rule              rule_t;
+typedef struct logger_arg        logger_arg_t;
+typedef struct logger            logger_t;
 typedef struct pending_request_q pending_request_q_t;
 
 typedef enum downstream_status   downstream_status;
+typedef enum logger_argtype      logger_argtype;
 
 #define REQUEST_HAS_ERROR(req) (req->error ? 1 : req->upstream_err ? 1 : 0)
+
+struct logger_arg {
+    logger_argtype type;
+    char         * data;
+    size_t         len;
+    size_t         used;
+
+    TAILQ_ENTRY(logger_arg) next;
+};
+
+struct logger {
+    logger_cfg_t * config;
+    lzlog        * log;
+
+    TAILQ_HEAD(logger_args, logger_arg) args;
+};
 
 /**
  * @brief structure which represents a full proxy request
@@ -332,6 +370,14 @@ unsigned char * ssl_serial_tostr(evhtp_ssl_t *);
 unsigned char * ssl_cipher_tostr(evhtp_ssl_t *);
 unsigned char * ssl_cert_tostr(evhtp_ssl_t *);
 unsigned char * ssl_x509_ext_tostr(evhtp_ssl_t *, const char *);
+
+/***********************************************
+ * Logging functions
+ **********************************************/
+logger_t * logger_init(logger_cfg_t * config, int opts);
+void       logger_log(logger_t * logger, lzlog_level level, char * fmt, ...);
+void       logger_log_request(logger_t * logger, request_t * request);
+void       logger_log_request_error(logger_t * logger, request_t * request, char * fmt, ...);
 
 #endif
 

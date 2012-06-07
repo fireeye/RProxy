@@ -213,13 +213,13 @@ lbstr_to_lbtype(const char * lbstr) {
     return lb_method_rtt;
 }
 
-log_cfg_t *
-log_cfg_new(void) {
-    return (log_cfg_t *)calloc(sizeof(log_cfg_t), 1);
+logger_cfg_t *
+logger_cfg_new(void) {
+    return (logger_cfg_t *)calloc(sizeof(logger_cfg_t), 1);
 }
 
 void
-log_cfg_free(log_cfg_t * lcfg) {
+logger_cfg_free(logger_cfg_t * lcfg) {
     if (!lcfg) {
         return;
     }
@@ -477,14 +477,14 @@ x509_ext_cfg_free(void * arg) {
     free(c);
 }
 
-log_cfg_t *
-log_cfg_parse(cfg_t * cfg) {
-    log_cfg_t * lcfg;
-    char      * level_str;
-    char      * output_str;
-    char      * scheme;
-    char      * path;
-    int         i;
+logger_cfg_t *
+logger_cfg_parse(cfg_t * cfg) {
+    logger_cfg_t * lcfg;
+    char         * level_str;
+    char         * output_str;
+    char         * scheme;
+    char         * path;
+    int            i;
 
     if (cfg == NULL) {
         return NULL;
@@ -494,7 +494,7 @@ log_cfg_parse(cfg_t * cfg) {
         return NULL;
     }
 
-    lcfg        = log_cfg_new();
+    lcfg        = logger_cfg_new();
     assert(lcfg != NULL);
 
     /* convert the level value from a string to the correct lzlog level enum */
@@ -534,18 +534,18 @@ log_cfg_parse(cfg_t * cfg) {
     path       = strtok(NULL, ":");
 
     if (!strcasecmp(scheme, "file")) {
-        lcfg->type = log_type_file;
+        lcfg->type = logger_type_file;
     } else if (!strcasecmp(scheme, "syslog")) {
-        lcfg->type = log_type_syslog;
+        lcfg->type = logger_type_syslog;
     } else {
-        lcfg->type = log_type_file;
+        lcfg->type = logger_type_file;
     }
 
     switch (lcfg->type) {
-        case log_type_file:
+        case logger_type_file:
             lcfg->path = strdup(path);
             break;
-        case log_type_syslog:
+        case logger_type_syslog:
             for (i = 0; facility_strmap[i].str; i++) {
                 if (!strcasecmp(facility_strmap[i].str, path)) {
                     lcfg->facility = facility_strmap[i].facility;
@@ -562,7 +562,7 @@ log_cfg_parse(cfg_t * cfg) {
     free(output_str);
 
     return lcfg;
-} /* log_cfg_parse */
+} /* logger_cfg_parse */
 
 /**
  * @brief parses and creates a new ssl_cfg_t resource

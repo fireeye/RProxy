@@ -120,6 +120,15 @@ log_free(lzlog * log) {
     free(log);
 }
 
+void
+lzlog_set_level(lzlog * log, lzlog_level level) {
+    if (!log) {
+	return;
+    }
+
+    log->level = level;
+}
+
 static char *
 _reformat(lzlog * log, const char * fmt, lzlog_level level) {
     int    sres;
