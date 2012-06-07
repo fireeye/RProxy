@@ -1252,10 +1252,9 @@ downstream_connection_readcb(evbev_t * bev, void * arg) {
  */
 void
 downstream_connection_retry(int sock, short which, void * arg) {
-    downstream_c_t   * connection;
-    downstream_t     * downstream;
-    rproxy_t         * rproxy;
-    struct sockaddr_in sin;
+    downstream_c_t * connection;
+    downstream_t   * downstream;
+    rproxy_t       * rproxy;
 
     assert(arg != NULL);
 
@@ -1270,10 +1269,6 @@ downstream_connection_retry(int sock, short which, void * arg) {
         bufferevent_free(connection->connection);
     }
 
-    sin.sin_family         = AF_INET;
-    sin.sin_addr.s_addr    = inet_addr(downstream->config->host);
-    sin.sin_port           = htons(downstream->config->port);
-
     connection->connection = bufferevent_socket_new(downstream->evbase, -1,
                                                     BEV_OPT_CLOSE_ON_FREE);
 
@@ -1287,8 +1282,10 @@ downstream_connection_retry(int sock, short which, void * arg) {
     /* once the socket has connected (or errored), the
      * downstream_connection_eventcb function is called.
      */
-    bufferevent_socket_connect(connection->connection,
-                               (struct sockaddr *)&sin, sizeof(sin));
+    bufferevent_socket_connect_hostname(connection->connection,
+                                        rproxy->dns_base, AF_INET,
+                                        downstream->config->host,
+                                        downstream->config->port);
 
     {
         /* if configured, apply our read/write timeouts on the downstream

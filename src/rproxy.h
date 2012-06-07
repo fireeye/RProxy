@@ -23,6 +23,7 @@
 #include <assert.h>
 #include <stdbool.h>
 #include <confuse.h>
+#include <event2/dns.h>
 #include <evhtp.h>
 
 #include "lzq.h"
@@ -268,6 +269,7 @@ TAILQ_HEAD(pending_request_q, request);
 struct rproxy {
     evhtp_t           * htp;
     evbase_t          * evbase;
+    struct evdns_base * dns_base;
     event_t           * request_ev;
     server_cfg_t      * server_cfg;
     lztq              * rules;

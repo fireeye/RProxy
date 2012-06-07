@@ -1058,6 +1058,12 @@ rproxy_thread_init(evhtp_t * htp, evthr_t * thr, void * arg) {
     rproxy->rules       = lztq_new();
     assert(rproxy->rules != NULL);
 
+    /* create a dns_base which is used for various resolution functions, e.g.,
+     * bufferevent_socket_connect_hostname()
+     */
+    rproxy->dns_base    = evdns_base_new(evbase, 1);
+    assert(rproxy->dns_base != NULL);
+
     /* init our pending request tailq */
     TAILQ_INIT(&rproxy->pending);
 
