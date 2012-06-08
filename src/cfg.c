@@ -978,6 +978,8 @@ rproxy_cfg_parse_(cfg_t * cfg) {
         scfg = server_cfg_parse(cfg_getnsec(cfg, "server", i));
         assert(scfg != NULL);
 
+        scfg->rproxy_cfg = rpcfg;
+
         elem = lztq_append(rpcfg->servers, scfg, sizeof(scfg), server_cfg_free);
         assert(elem != NULL);
     }

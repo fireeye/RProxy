@@ -88,6 +88,8 @@ struct rule_cfg {
     char          * matchstr;    /**< the uri to match on */
     headers_cfg_t * headers;     /**< headers which are added to the backend request */
     lztq          * downstreams; /**< list of downstream names (as supplied by downstream_cfg_t->name */
+    logger_cfg_t  * req_log;     /**< request logging config */
+    logger_cfg_t  * err_log;     /**< error logging config */
     bool            passthrough;
     int             has_up_read_timeout;
     int             has_up_write_timeout;
@@ -162,6 +164,7 @@ struct server_cfg {
     struct timeval write_timeout;   /**< time to wait for writing before client is dropped */
     struct timeval pending_timeout; /**< time to wait for a downstream to become available for a connection */
 
+    rproxy_cfg_t    * rproxy_cfg;   /**< parent rproxy configuration */
     evhtp_ssl_cfg_t * ssl_cfg;      /**< if enabled, the ssl configuration */
     lztq            * downstreams;  /**< list of downstream_cfg_t's */
     lztq            * vhosts;       /**< list of vhost_cfg_t's */
@@ -219,6 +222,7 @@ typedef struct downstream        downstream_t;
 typedef struct downstream_c      downstream_c_t;
 typedef struct request           request_t;
 typedef struct rule              rule_t;
+typedef struct vhost             vhost_t;
 typedef struct logger_arg        logger_arg_t;
 typedef struct logger            logger_t;
 typedef struct pending_request_q pending_request_q_t;
@@ -242,6 +246,13 @@ struct logger {
     lzlog        * log;
 
     TAILQ_HEAD(logger_args, logger_arg) args;
+};
+
+struct vhost {
+    vhost_cfg_t * config;
+    rproxy_t    * rproxy;
+    logger_t    * req_log;
+    logger_t    * err_log;
 };
 
 /**
@@ -272,15 +283,15 @@ struct request {
  * @brief a structure representing a downstream connection.
  */
 struct downstream_c {
-    downstream_t    * parent;            /**< the parent downstream structure */
-    evbev_t         * connection;        /**< the bufferevent connection */
-    request_t       * request;           /**< the currently running request */
-    event_t         * retry_timer;       /**< the timer event for reconnecting if down */
-    downstream_status status;            /**< the status of this downstream */
-    double            rtt;               /**< the last RTT for a request made to the connection */
-    uint16_t          sport;             /**< the source port of the connected socket */
-    uint8_t           bootstrapped;      /**< if not set to 1, the connection will immediately attempt the reconnect */
-    struct timeval    tv_start;          /**< the time which the connection was set to active, used to calculate RTT */
+    downstream_t    * parent;          /**< the parent downstream structure */
+    evbev_t         * connection;      /**< the bufferevent connection */
+    request_t       * request;         /**< the currently running request */
+    event_t         * retry_timer;     /**< the timer event for reconnecting if down */
+    downstream_status status;          /**< the status of this downstream */
+    double            rtt;             /**< the last RTT for a request made to the connection */
+    uint16_t          sport;           /**< the source port of the connected socket */
+    uint8_t           bootstrapped;    /**< if not set to 1, the connection will immediately attempt the reconnect */
+    struct timeval    tv_start;        /**< the time which the connection was set to active, used to calculate RTT */
 
     TAILQ_ENTRY(downstream_c) next;
 };
@@ -289,33 +300,38 @@ struct downstream_c {
  * @brief a container active/idle/downed downstream connections
  */
 struct downstream {
-    downstream_cfg_t * config;           /**< this downstreams configuration */
+    downstream_cfg_t * config;         /**< this downstreams configuration */
     evbase_t         * evbase;
     rproxy_t         * rproxy;
-    uint16_t           num_active;       /**< number of ents in the active list */
-    uint16_t           num_idle;         /**< number of ents in the idle list */
-    uint16_t           num_down;         /**< number of ents in the down list */
+    uint16_t           num_active;     /**< number of ents in the active list */
+    uint16_t           num_idle;       /**< number of ents in the idle list */
+    uint16_t           num_down;       /**< number of ents in the down list */
 
-    TAILQ_HEAD(, downstream_c) active;   /**< list of active connections */
-    TAILQ_HEAD(, downstream_c) idle;     /**< list of idle and ready connections */
-    TAILQ_HEAD(, downstream_c) down;     /**< list of connections which are down */
+    TAILQ_HEAD(, downstream_c) active; /**< list of active connections */
+    TAILQ_HEAD(, downstream_c) idle;   /**< list of idle and ready connections */
+    TAILQ_HEAD(, downstream_c) down;   /**< list of connections which are down */
 };
 
 struct rule {
     rproxy_t   * rproxy;
     rule_cfg_t * config;
-    lztq       * downstreams;            /**< list of downstream_t's configured for this rule */
-    lztq_elem  * last_downstream_used;   /**< the last downstream used to service a request. Used for round-robin loadbalancing */
+    vhost_t    * parent_vhost;         /**< the vhost this rule is under */
+    lztq       * downstreams;          /**< list of downstream_t's configured for this rule */
+    lztq_elem  * last_downstream_used; /**< the last downstream used to service a request. Used for round-robin loadbalancing */
+    logger_t   * req_log;              /**< rule specific request log */
+    logger_t   * err_log;              /**< rule specific error log */
 };
 
 TAILQ_HEAD(pending_request_q, request);
 
 struct rproxy {
+    rproxy_cfg_t      * config;
     evhtp_t           * htp;
     evbase_t          * evbase;
     event_t           * request_ev;
     server_cfg_t      * server_cfg;
     lztq              * rules;
+    logger_t          * log;         /**< general log */
     lztq              * downstreams; /**< list of all downstream_t's */
     int                 n_pending;   /**< number of pending requests */
     pending_request_q_t pending;     /**< list of pending upstream request_t's */
