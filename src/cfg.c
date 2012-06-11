@@ -40,7 +40,7 @@ static cfg_opt_t ssl_opts[] = {
 };
 
 static cfg_opt_t log_opts[] = {
-    CFG_BOOL("enabled", cfg_true,                    CFGF_NONE),
+    CFG_BOOL("enabled", cfg_false,                   CFGF_NONE),
     CFG_STR("output",   "file:/dev/stdout",          CFGF_NONE),
     CFG_STR("level",    "emerg",                     CFGF_NONE),
     CFG_STR("format",   "{SRC} {HOST} {URI} {HOST}", CFGF_NONE),
@@ -855,6 +855,9 @@ parse_rule_type_and_append(vhost_cfg_t * vhost, cfg_t * cfg, const char * name) 
 vhost_cfg_t *
 vhost_cfg_parse(cfg_t * cfg) {
     vhost_cfg_t * vcfg;
+    cfg_t       * log_cfg;
+    cfg_t       * req_log_cfg;
+    cfg_t       * err_log_cfg;
     int           i;
     int           res;
 
@@ -886,8 +889,15 @@ vhost_cfg_parse(cfg_t * cfg) {
         assert(elem != NULL);
     }
 
+    log_cfg = cfg_getsec(cfg, "logging");
+
+    if (log_cfg) {
+        vcfg->req_log = logger_cfg_parse(cfg_getsec(log_cfg, "request"));
+        vcfg->err_log = logger_cfg_parse(cfg_getsec(log_cfg, "error"));
+    }
+
     return vcfg;
-}
+} /* vhost_cfg_parse */
 
 /**
  * @brief parses a server {} entry from a config.

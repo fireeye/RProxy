@@ -297,7 +297,7 @@ logger_log_request(logger_t * logger, request_t * request) {
     logger_log_request_tostr(logger, request, buf);
     evbuffer_add(buf, "\0", 1);
 
-    lzlog_write(logger->log, 0, "%s", evbuffer_pullup(buf, -1));
+    lzlog_write(logger->log, 1, "%s", evbuffer_pullup(buf, -1));
 
     evbuffer_free(buf);
 }         /* logger_log_request */

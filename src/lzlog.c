@@ -93,7 +93,12 @@ lzlog_new(lzlog_vtbl * vtbl, const char * ident, int opts) {
 
     pthread_mutex_init(&log->mutex, NULL);
 
-    log->ident = ident ? strdup(ident) : strdup("pname");
+    if (ident) {
+	log->ident = strdup(ident);
+    } else {
+	log->ident = strdup("pname");
+    }
+
     log->vtbl  = vtbl;
     log->level = lzlog_max;
     log->opts  = opts;
@@ -269,7 +274,6 @@ lzlog_syslog_new(const char * ident, int opts, int facility) {
 
 struct _log_file {
     lzlog_vtbl parent;
-    char     * ident;
     FILE     * file;
 };
 
@@ -329,8 +333,6 @@ lzlog_file_new(const char * file, const char * ident, int opts) {
     if (!(lfile->file = fopen(filename, "a+"))) {
         return NULL;
     }
-
-    lfile->ident = ident ? strdup(ident) : NULL;
 
     return result;
 }
