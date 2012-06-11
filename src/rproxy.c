@@ -1146,8 +1146,10 @@ rproxy_thread_init(evhtp_t * htp, evthr_t * thr, void * arg) {
     rproxy->server_cfg = server_cfg;
     rproxy->evbase     = evbase;
     rproxy->htp        = htp;
+#if 0
     rproxy->log        = logger_init(server_cfg->rproxy_cfg->log,
                                      LZLOG_OPT_WLEVEL | LZLOG_OPT_WDATE);
+#endif
 
     /* create a downstream_t instance for each configured downstream */
     res = lztq_for_each(server_cfg->downstreams, add_downstream, rproxy);

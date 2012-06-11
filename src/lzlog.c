@@ -94,9 +94,9 @@ lzlog_new(lzlog_vtbl * vtbl, const char * ident, int opts) {
     pthread_mutex_init(&log->mutex, NULL);
 
     if (ident) {
-	log->ident = strdup(ident);
+        log->ident = strdup(ident);
     } else {
-	log->ident = strdup("pname");
+        log->ident = strdup("pname");
     }
 
     log->vtbl  = vtbl;
@@ -128,7 +128,7 @@ log_free(lzlog * log) {
 void
 lzlog_set_level(lzlog * log, lzlog_level level) {
     if (!log) {
-	return;
+        return;
     }
 
     log->level = level;
@@ -137,8 +137,9 @@ lzlog_set_level(lzlog * log, lzlog_level level) {
 static char *
 _reformat(lzlog * log, const char * fmt, lzlog_level level) {
     int    sres;
-    char * buf = NULL;
-    size_t len = strlen(fmt) + 4;
+    char * buf   = NULL;
+    size_t len   = strlen(fmt) + 4;
+    int    wrote = 0;
 
     if (log->opts == LZLOG_OPT_NONE) {
         return NULL;
@@ -159,6 +160,8 @@ _reformat(lzlog * log, const char * fmt, lzlog_level level) {
         if (sres >= len || sres < 0) {
             abort();
         }
+
+        wrote = 1;
     }
 
     if (log->opts & LZLOG_OPT_WNAME) {
@@ -178,10 +181,12 @@ _reformat(lzlog * log, const char * fmt, lzlog_level level) {
             abort();
         }
 
-        len += strlen(sbuf);
-        buf  = realloc(buf, len);
+        len  += strlen(sbuf);
+        buf   = realloc(buf, len);
 
         strncat(buf, sbuf, len);
+
+        wrote = 1;
     }
 
     if (log->opts & LZLOG_OPT_WLEVEL) {
@@ -194,10 +199,15 @@ _reformat(lzlog * log, const char * fmt, lzlog_level level) {
             }
 
             strncat(buf, _level_str[level], len);
+
+            wrote = 1;
         }
     }
 
-    strncat(buf, ": ", len);
+    if (wrote == 1) {
+        strncat(buf, ": ", len);
+    }
+
     strncat(buf, fmt, len);
     strncat(buf, "\n", len);
 
@@ -213,31 +223,31 @@ _syslog_print(lzlog * log, lzlog_level level, const char * fmt, va_list ap) {
 
     switch (level) {
         case lzlog_emerg:
-            priority   = LOG_EMERG;
+            priority = LOG_EMERG;
             break;
         case lzlog_alert:
-            priority   = LOG_ALERT;
+            priority = LOG_ALERT;
             break;
         case lzlog_crit:
-            priority   = LOG_CRIT;
+            priority = LOG_CRIT;
             break;
         case lzlog_err:
-            priority   = LOG_ERR;
+            priority = LOG_ERR;
             break;
         case lzlog_warn:
-            priority   = LOG_WARNING;
+            priority = LOG_WARNING;
             break;
         case lzlog_notice:
             priority = LOG_NOTICE;
             break;
         case lzlog_info:
-            priority   = LOG_INFO;
+            priority = LOG_INFO;
             break;
         case lzlog_debug:
-            priority   = LOG_DEBUG;
+            priority = LOG_DEBUG;
             break;
         default:
-            priority   = LOG_ERR;
+            priority = LOG_ERR;
             break;
     } /* switch */
 
@@ -273,8 +283,8 @@ lzlog_syslog_new(const char * ident, int opts, int facility) {
 }
 
 struct _log_file {
-    lzlog_vtbl parent;
-    FILE     * file;
+    lzlog  parent;
+    FILE * file;
 };
 
 static void
@@ -322,17 +332,16 @@ lzlog_file_new(const char * file, const char * ident, int opts) {
     struct _log_file * lfile;
     const char       * filename;
 
-    filename = file ? file : "/dev/stdout";
-
     if (!(result = lzlog_new(&_file_vtbl, ident, opts))) {
         return NULL;
     }
 
     lfile = (struct _log_file *)result;
 
-    if (!(lfile->file = fopen(filename, "a+"))) {
+    if (!(lfile->file = fopen(file, "a+"))) {
         return NULL;
     }
 
     return result;
 }
+
