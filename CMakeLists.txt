@@ -58,6 +58,10 @@ set (SYS_LIBS
 			${LIB_DL}
 )
 
+if (APPLE)
+	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-deprecated-declarations")
+endif(APPLE)
+
 if (NOT APPLE)
     find_library (LIB_RT rt)
     set (SYS_LIBS ${SYS_LIBS} ${LIB_RT})

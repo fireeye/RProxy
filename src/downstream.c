@@ -60,19 +60,11 @@ proxy_parser_header_key(htparser * p, const char * data, size_t len) {
     }
 
     if (!(upstream_r = request->upstream_request)) {
-#if 0
-        logger_log_request_error(rproxy->logger, request,
-                                 "[ERROR] upstream_request == NULL");
-#endif
         request->error = 1;
         return -1;
     }
 
     if (!(key_s = malloc(len + 1))) {
-#if 0
-        logger_log_request_error(request->rproxy->logger, request,
-                                 "[CRIT] Could not malloc: %s", strerror(errno));
-#endif
         exit(EXIT_FAILURE);
     }
 
@@ -115,19 +107,11 @@ proxy_parser_header_val(htparser * p, const char * data, size_t len) {
     }
 
     if (!(upstream_r = request->upstream_request)) {
-#if 0
-        logger_log_request_error(rproxy->logger, request,
-                                 "[ERROR] header_val upstream_r == NULL");
-#endif
         request->error = 1;
         return -1;
     }
 
     if (!(val_s = calloc(len + 1, 1))) {
-#if 0
-        logger_log_request_error(request->rproxy->logger, request,
-                                 "[CRIT] Could not malloc: %s", strerror(errno));
-#endif
         exit(EXIT_FAILURE);
     }
 
@@ -172,10 +156,6 @@ proxy_parser_headers_complete(htparser * p) {
     }
 
     if (!(upstream_r = request->upstream_request)) {
-#if 0
-        logger_log_request_error(rproxy->logger, request,
-                                 "[ERROR] parser_headers_complete() upstream_r == NULL");
-#endif
         request->error = 1;
         return -1;
     }
@@ -230,19 +210,11 @@ proxy_parser_new_chunk(htparser * p) {
     }
 
     if (!(upstream_r = request->upstream_request)) {
-#if 0
-        logger_log_request_error(rproxy->logger, request,
-                                 "[ERROR] parser_new_chunk() upstream_r == NULL");
-#endif
         request->error = 1;
         return -1;
     }
 
     if (!(buf = evbuffer_new())) {
-#if 0
-        logger_log_request_error(request->rproxy->logger, request,
-                                 "[CRIT] Could not malloc: %s", strerror(errno));
-#endif
         exit(EXIT_FAILURE);
     }
 
@@ -294,19 +266,11 @@ proxy_parser_chunk_complete(htparser * p) {
     }
 
     if (!(upstream_r = request->upstream_request)) {
-#if 0
-        logger_log_request_error(rproxy->logger, request,
-                                 "[ERROR] parser_chunk_complete() upstream_r == NULL");
-#endif
         request->error = 1;
         return -1;
     }
 
     if (!(buf = evbuffer_new())) {
-#if 0
-        logger_log_request_error(request->rproxy->logger, request,
-                                 "[CRIT] Could not malloc: %s", strerror(errno));
-#endif
         exit(EXIT_FAILURE);
     }
 
@@ -351,19 +315,11 @@ proxy_parser_chunks_complete(htparser * p) {
     }
 
     if (!(upstream_r = request->upstream_request)) {
-#if 0
-        logger_log_request_error(rproxy->logger, request,
-                                 "[ERROR] chunks_complete() upstream_r == NULL");
-#endif
         request->error = 1;
         return -1;
     }
 
     if (!(buf = evbuffer_new())) {
-#if 0
-        logger_log_error(request->rproxy->logger,
-                         "[CRIT] Could not malloc: %s", strerror(errno));
-#endif
         exit(EXIT_FAILURE);
     }
 
@@ -411,19 +367,11 @@ proxy_parser_body(htparser * p, const char * data, size_t len) {
     }
 
     if (!(upstream_r = request->upstream_request)) {
-#if 0
-        logger_log_request_error(rproxy->logger, request,
-                                 "[ERROR] parser_body() upstream_r == NULL");
-#endif
         request->error = 1;
         return -1;
     }
 
     if (!(buf = evbuffer_new())) {
-#if 0
-        logger_log_request_error(request->rproxy->logger, request,
-                                 "[CRIT] Could not malloc: %s", strerror(errno));
-#endif
         exit(EXIT_FAILURE);
     }
 
@@ -457,10 +405,6 @@ proxy_parser_fini(htparser * p) {
     }
 
     if (!(upstream_r = request->upstream_request)) {
-#if 0
-        logger_log_request_error(rproxy->logger, request,
-                                 "[ERROR] proxy_parser_fini() upstream_r == NULL");
-#endif
         request->error = 1;
         return -1;
     }
@@ -527,6 +471,11 @@ downstream_connection_set_idle(downstream_c_t * connection) {
             downstream->num_idle   -= 1;
             break;
         case downstream_status_down:
+            logger_log(downstream->rproxy->log, lzlog_info,
+                       "%s() downstream %s:%d is now UP",
+                       __FUNCTION__,
+                       downstream->config->host,
+                       downstream->config->port);
 #if 0
             logger_log_error(downstream->rproxy->logger,
                              "[INFO] Downstream %s:%d is now up",
@@ -588,6 +537,12 @@ downstream_connection_set_down(downstream_c_t * connection) {
     }
 
     if (connection->status != downstream_status_down) {
+        logger_log(downstream->rproxy->log, lzlog_err,
+                   "%s(): downstream proxy:%d -> %s:%d is down",
+                   __FUNCTION__,
+                   connection->sport,
+                   downstream->config->host,
+                   downstream->config->port);
 #if 0
         logger_log_error(downstream->rproxy->logger,
                          "[ERROR] Downstream proxy:%d -> %s:%d is down",
@@ -960,6 +915,8 @@ downstream_connection_get(rule_t * rule) {
             return downstream_connection_get_none(rule);
         case lb_method_rand:
         default:
+            logger_log(rule->rproxy->log, lzlog_crit,
+                       "%s(): unknown lb method %d", __FUNCTION__, rcfg->lb_method);
 #if 0
             logger_log_error(rproxy->logger, "[CRIT] Unknown loadbalance method %d", scfg->lbalance_method);
 #endif
@@ -1057,6 +1014,7 @@ downstream_connection_eventcb(evbev_t * bev, short events, void * arg) {
 
     if (connection->request) {
         request_t       * request    = connection->request;
+        rule_t          * rule       = request->rule;
         evhtp_request_t * up_request = request->upstream_request;
 
         request->error = 1;
@@ -1067,6 +1025,12 @@ downstream_connection_eventcb(evbev_t * bev, short events, void * arg) {
             if (!request->upstream_err) {
                 evhtp_unset_all_hooks(&up_request->hooks);
 
+                logger_log_request_error(rule->err_log, request,
+                                         "%s(): ds req proxy:%d -> %s:%d never completed",
+                                         __FUNCTION__,
+                                         connection->sport,
+                                         downstream->config->host,
+                                         downstream->config->port);
 #if 0
                 logger_log_request_error(rproxy->logger, request,
                                          "[WARN] Downstream request proxy:%d -> %s:%d never completed",
@@ -1093,8 +1057,18 @@ downstream_connection_eventcb(evbev_t * bev, short events, void * arg) {
      */
 
     if (connection && connection->status != downstream_status_down) {
+        logger_log(rproxy->log, lzlog_crit,
+                   "[CRIT] downstream socket event (source port=%d) error %d [ %s%s%s%s%s%s]",
+                   connection->sport, events,
+                   (events & BEV_EVENT_READING) ? "READING " : "",
+                   (events & BEV_EVENT_WRITING) ? "WRITING " : "",
+                   (events & BEV_EVENT_EOF)     ? "EOF " : "",
+                   (events & BEV_EVENT_ERROR) ? "ERROR " : "",
+                   (events & BEV_EVENT_TIMEOUT) ? "TIMEOUT " : "",
+                   (events & BEV_EVENT_CONNECTED) ? "CONNECTED " : "");
 #if 0
-        logger_log_error(rproxy->logger, "[CRIT] downstream socket event (source port=%d) error %d [ %s%s%s%s%s%s]",
+        logger_log_error(rproxy->logger,
+                         "[CRIT] downstream socket event (source port=%d) error %d [ %s%s%s%s%s%s]",
                          connection->sport, events,
                          (events & BEV_EVENT_READING) ? "READING " : "",
                          (events & BEV_EVENT_WRITING) ? "WRITING " : "",
@@ -1125,15 +1099,17 @@ downstream_connection_readcb(evbev_t * bev, void * arg) {
     request_t      * request;
     evbuf_t        * evbuf;
     rule_cfg_t     * rule_cfg;
+    rule_t         * rule;
     void           * buf;
     size_t           avail;
     size_t           nread;
     struct timeval   diff;
     int              res;
 
-    assert(arg != NULL);
 
     connection = arg;
+    assert(connection != NULL);
+
     downstream = connection->parent;
     assert(downstream != NULL);
 
@@ -1143,7 +1119,10 @@ downstream_connection_readcb(evbev_t * bev, void * arg) {
     request    = connection->request;
     assert(request != NULL);
 
-    rule_cfg   = request->rule->config;
+    rule       = request->rule;
+    assert(rule != NULL);
+
+    rule_cfg   = rule->config;
     assert(rule_cfg != NULL);
 
     evbuf      = bufferevent_get_input(bev);
@@ -1194,6 +1173,7 @@ downstream_connection_readcb(evbev_t * bev, void * arg) {
          * has been written to the upstream.
          */
 
+        logger_log_request(rule->req_log, request);
 #if 0
         logger_log_request(rproxy->logger, request);
 #endif
@@ -1226,6 +1206,7 @@ downstream_connection_readcb(evbev_t * bev, void * arg) {
             evhtp_unset_all_hooks(&request->upstream_request->hooks);
 
             if (request->done) {
+                logger_log_request(rule->req_log, request);
 #if 0
                 logger_log_request(rproxy->logger, request);
 #endif
@@ -1341,6 +1322,9 @@ downstream_connection_init(evbase_t * evbase, downstream_t * downstream) {
         int              res;
 
         if (!(connection = downstream_connection_new(evbase, downstream))) {
+            logger_log(downstream->rproxy->log, lzlog_crit,
+                       "%s(): could not create ds conn (%s)",
+                       __FUNCTION__, strerror(errno));
 #if 0
             logger_log_error(downstream->rproxy->logger,
                              "[CRIT] Could not create new downstream connection! %s",

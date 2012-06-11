@@ -40,9 +40,9 @@ static cfg_opt_t ssl_opts[] = {
 };
 
 static cfg_opt_t log_opts[] = {
-    CFG_BOOL("enabled", cfg_true,                    CFGF_NONE),
+    CFG_BOOL("enabled", cfg_false,                   CFGF_NONE),
     CFG_STR("output",   "file:/dev/stdout",          CFGF_NONE),
-    CFG_INT("level",    0,                           CFGF_NONE),
+    CFG_STR("level",    "crit",                     CFGF_NONE),
     CFG_STR("format",   "{SRC} {HOST} {URI} {HOST}", CFGF_NONE),
     CFG_END()
 };
@@ -50,6 +50,7 @@ static cfg_opt_t log_opts[] = {
 static cfg_opt_t logging_opts[] = {
     CFG_SEC("request", log_opts, CFGF_NONE),
     CFG_SEC("error",   log_opts, CFGF_NONE),
+    CFG_SEC("general", log_opts, CFGF_NONE),
     CFG_END()
 };
 
@@ -149,6 +150,33 @@ static cfg_opt_t rproxy_opts[] = {
     CFG_END()
 };
 
+struct {
+    int          facility;
+    const char * str;
+} facility_strmap[] = {
+    { LOG_KERN,     "kern"     },
+    { LOG_USER,     "user"     },
+    { LOG_MAIL,     "mail"     },
+    { LOG_DAEMON,   "daemon"   },
+    { LOG_AUTH,     "auth"     },
+    { LOG_SYSLOG,   "syslog"   },
+    { LOG_LPR,      "lptr"     },
+    { LOG_NEWS,     "news"     },
+    { LOG_UUCP,     "uucp"     },
+    { LOG_CRON,     "cron"     },
+    { LOG_AUTHPRIV, "authpriv" },
+    { LOG_FTP,      "ftp"      },
+    { LOG_LOCAL0,   "local0"   },
+    { LOG_LOCAL1,   "local1"   },
+    { LOG_LOCAL2,   "local2"   },
+    { LOG_LOCAL3,   "local3"   },
+    { LOG_LOCAL4,   "local4"   },
+    { LOG_LOCAL5,   "local5"   },
+    { LOG_LOCAL6,   "local6"   },
+    { LOG_LOCAL7,   "local7"   },
+    { -1,           NULL       }
+};
+
 /**
  * @brief Convert the config value of "lb-method" to a lb_method enum type.
  *
@@ -183,6 +211,28 @@ lbstr_to_lbtype(const char * lbstr) {
     }
 
     return lb_method_rtt;
+}
+
+logger_cfg_t *
+logger_cfg_new(void) {
+    return (logger_cfg_t *)calloc(sizeof(logger_cfg_t), 1);
+}
+
+void
+logger_cfg_free(logger_cfg_t * lcfg) {
+    if (!lcfg) {
+        return;
+    }
+
+    if (lcfg->path) {
+        free(lcfg->path);
+    }
+
+    if (lcfg->format) {
+        free(lcfg->format);
+    }
+
+    free(lcfg);
 }
 
 rproxy_cfg_t *
@@ -264,7 +314,9 @@ vhost_cfg_new(void) {
 }
 
 void
-vhost_cfg_free(vhost_cfg_t * cfg) {
+vhost_cfg_free(void * arg) {
+    vhost_cfg_t * cfg = arg;
+
     if (!cfg) {
         return;
     }
@@ -424,6 +476,93 @@ x509_ext_cfg_free(void * arg) {
 
     free(c);
 }
+
+logger_cfg_t *
+logger_cfg_parse(cfg_t * cfg) {
+    logger_cfg_t * lcfg;
+    char         * level_str;
+    char         * output_str;
+    char         * scheme;
+    char         * path;
+    int            i;
+
+    if (cfg == NULL) {
+        return NULL;
+    }
+
+    if (cfg_getbool(cfg, "enabled") == cfg_false) {
+        return NULL;
+    }
+
+    lcfg        = logger_cfg_new();
+    assert(lcfg != NULL);
+
+    /* convert the level value from a string to the correct lzlog level enum */
+    lcfg->level = lzlog_emerg;
+    level_str   = cfg_getstr(cfg, "level");
+
+    if (level_str != NULL) {
+        if (!strcasecmp(level_str, "emerg")) {
+            lcfg->level = lzlog_emerg;
+        } else if (!strcasecmp(level_str, "alert")) {
+            lcfg->level = lzlog_alert;
+        } else if (!strcasecmp(level_str, "crit")) {
+            lcfg->level = lzlog_crit;
+        } else if (!strcasecmp(level_str, "error")) {
+            lcfg->level = lzlog_err;
+        } else if (!strcasecmp(level_str, "warn")) {
+            lcfg->level = lzlog_warn;
+        } else if (!strcasecmp(level_str, "notice")) {
+            lcfg->level = lzlog_notice;
+        } else if (!strcasecmp(level_str, "info")) {
+            lcfg->level = lzlog_info;
+        } else if (!strcasecmp(level_str, "debug")) {
+            lcfg->level = lzlog_debug;
+        } else {
+            lcfg->level = lzlog_emerg;
+        }
+    }
+
+    /* the output configuration directive is in the format of 'scheme:path'. If
+     * the scheme is 'file', the path is the filename. If the scheme is
+     * 'syslog', the path is the syslog facility.
+     */
+    output_str = strdup(cfg_getstr(cfg, "output"));
+    assert(output_str != NULL);
+
+    scheme     = strtok(output_str, ":");
+    path       = strtok(NULL, ":");
+
+    if (!strcasecmp(scheme, "file")) {
+        lcfg->type = logger_type_file;
+    } else if (!strcasecmp(scheme, "syslog")) {
+        lcfg->type = logger_type_syslog;
+    } else {
+        lcfg->type = logger_type_file;
+    }
+
+    switch (lcfg->type) {
+        case logger_type_file:
+            lcfg->path = strdup(path);
+            break;
+        case logger_type_syslog:
+            for (i = 0; facility_strmap[i].str; i++) {
+                if (!strcasecmp(facility_strmap[i].str, path)) {
+                    lcfg->facility = facility_strmap[i].facility;
+                }
+            }
+            break;
+        default:
+            break;
+    }
+
+    lcfg->format = strdup(cfg_getstr(cfg, "format"));
+    assert(lcfg->format != NULL);
+
+    free(output_str);
+
+    return lcfg;
+} /* logger_cfg_parse */
 
 /**
  * @brief parses and creates a new ssl_cfg_t resource
@@ -716,6 +855,9 @@ parse_rule_type_and_append(vhost_cfg_t * vhost, cfg_t * cfg, const char * name) 
 vhost_cfg_t *
 vhost_cfg_parse(cfg_t * cfg) {
     vhost_cfg_t * vcfg;
+    cfg_t       * log_cfg;
+    cfg_t       * req_log_cfg;
+    cfg_t       * err_log_cfg;
     int           i;
     int           res;
 
@@ -747,8 +889,15 @@ vhost_cfg_parse(cfg_t * cfg) {
         assert(elem != NULL);
     }
 
+    log_cfg = cfg_getsec(cfg, "logging");
+
+    if (log_cfg) {
+        vcfg->req_log = logger_cfg_parse(cfg_getsec(log_cfg, "request"));
+        vcfg->err_log = logger_cfg_parse(cfg_getsec(log_cfg, "error"));
+    }
+
     return vcfg;
-}
+} /* vhost_cfg_parse */
 
 /**
  * @brief parses a server {} entry from a config.
@@ -838,6 +987,8 @@ rproxy_cfg_parse_(cfg_t * cfg) {
 
         scfg = server_cfg_parse(cfg_getnsec(cfg, "server", i));
         assert(scfg != NULL);
+
+        scfg->rproxy_cfg = rpcfg;
 
         elem = lztq_append(rpcfg->servers, scfg, sizeof(scfg), server_cfg_free);
         assert(elem != NULL);

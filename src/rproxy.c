@@ -299,6 +299,7 @@ send_upstream_headers(evhtp_request_t * upstream_req, evhtp_headers_t * hdrs, vo
     evhtp_header_t * connection_hdr;
     evbuf_t        * buf;
     rule_cfg_t     * rule_cfg;
+    rule_t         * rule;
     char           * query_args;
 
     request  = arg;
@@ -306,9 +307,11 @@ send_upstream_headers(evhtp_request_t * upstream_req, evhtp_headers_t * hdrs, vo
 
     rproxy   = request->rproxy;
     assert(rproxy != NULL);
-    assert(request->rule != NULL);
 
-    rule_cfg = request->rule->config;
+    rule     = request->rule;
+    assert(rule != NULL);
+
+    rule_cfg = rule->config;
     assert(rule_cfg != NULL);
 
     if (request->pending == 1) {
@@ -316,19 +319,14 @@ send_upstream_headers(evhtp_request_t * upstream_req, evhtp_headers_t * hdrs, vo
     }
 
     if (!request->downstream_conn->connection) {
-#if 0
-        logger_log_request_error(rproxy->logger, request,
-                                 "[ERROR] send_upstream_headers() request->downstream_conn->connection == NULL");
-#endif
+        logger_log_request_error(rule->err_log, request, "%s(): conn == NULL", __FUNCTION__);
         return EVHTP_RES_ERROR;
     }
 
     /* Add X-Headers to the request if applicable */
-    if (append_x_headers(request->rule->config->headers, upstream_req) < 0) {
-#if 0
-        logger_log_request_error(rproxy->logger, request,
-                                 "[ERROR] send_upstream_headers() append_x_headers < 0");
-#endif
+    if (append_x_headers(rule->config->headers, upstream_req) < 0) {
+        logger_log_request_error(rule->err_log, request,
+                                 "%s(): append_x_headers < 0", __FUNCTION__);
         return EVHTP_RES_ERROR;
     }
 
@@ -355,6 +353,9 @@ send_upstream_headers(evhtp_request_t * upstream_req, evhtp_headers_t * hdrs, vo
             connection_hdr = evhtp_header_new("Connection", "Keep-Alive", 0, 0);
 
             if (connection_hdr == NULL) {
+                logger_log_request_error(rule->err_log, request,
+                                         "%s(): couldn't create new header %s",
+                                         __FUNCTION__, strerror(errno));
 #if 0
                 logger_log_request_error(rproxy->logger, request,
                                          "[CRIT] Could not create new header! %s",
@@ -386,6 +387,9 @@ send_upstream_headers(evhtp_request_t * upstream_req, evhtp_headers_t * hdrs, vo
             evhtp_header_rm_and_free(hdrs, connection_hdr);
             break;
         default:
+            logger_log_request_error(rule->err_log, request,
+                                     "%s(): unknown proto %d",
+                                     __FUNCTION__, upstream_req->proto);
 #if 0
             logger_log_request_error(rproxy->logger, request,
                                      "[ERROR] send_upstream_headers() unknown proto %d", upstream_req->proto);
@@ -404,6 +408,9 @@ send_upstream_headers(evhtp_request_t * upstream_req, evhtp_headers_t * hdrs, vo
     }
 
     if (!(buf = evbuffer_new())) {
+        logger_log_request_error(rule->err_log, request,
+                                 "%s(): couldn't create evbuffer (%s)",
+                                 __FUNCTION__, strerror(errno));
 #if 0
         logger_log_request_error(rproxy->logger, request,
                                  "[CRIT] Could not create new evbuffer! %s",
@@ -453,6 +460,7 @@ evhtp_res
 send_upstream_body(evhtp_request_t * upstream_req, evbuf_t * buf, void * arg) {
     /* stream upstream request body to the downstream server */
     request_t      * request;
+    rule_t         * rule;
     rproxy_t       * rproxy;
     downstream_c_t * ds_conn;
 
@@ -462,28 +470,25 @@ send_upstream_body(evhtp_request_t * upstream_req, evbuf_t * buf, void * arg) {
     rproxy  = request->rproxy;
     assert(rproxy != NULL);
 
+    rule    = request->rule;
+    assert(rule != NULL);
+
     if (!upstream_req || !buf) {
-#if 0
-        logger_log_request_error(rproxy->logger, request,
-                                 "[ERROR] send_upstream_body() upstream_req = %p, buf = %p", upstream_req, buf);
-#endif
+        logger_log_request_error(rule->err_log, request,
+                                 "%s(): up_req = %p, buf = %p", __FUNCTION__, upstream_req, buf);
         return EVHTP_RES_FATAL;
     }
 
     if (!(ds_conn = request->downstream_conn)) {
-#if 0
-        logger_log_request_error(rproxy->logger, request,
-                                 "[ERROR] send_upstream_body() downstream_conn == NULL");
-#endif
+        logger_log_request_error(rule->err_log, request,
+                                 "%s(): downstream_conn == NULL", __FUNCTION__);
         return EVHTP_RES_FATAL;
     }
 
     if (!ds_conn->connection || request->error > 0) {
-#if 0
-        logger_log_request_error(rproxy->logger, request,
-                                 "[ERROR] send_upstream_body() conn->connection = %p, request->error == %d",
-                                 ds_conn->connection, request->error);
-#endif
+        logger_log_request_error(rule->err_log, request,
+                                 "%s(): conn = %p, req error = %d",
+                                 __FUNCTION__, ds_conn->connection, request->error);
         evbuffer_drain(buf, -1);
 
         return EVHTP_RES_ERROR;
@@ -512,6 +517,7 @@ send_upstream_new_chunk(evhtp_request_t * upstream_req, uint64_t len, void * arg
     request_t      * request;
     rproxy_t       * rproxy;
     downstream_c_t * ds_conn;
+    rule_t         * rule;
 
     request = arg;
     assert(request != NULL);
@@ -519,7 +525,12 @@ send_upstream_new_chunk(evhtp_request_t * upstream_req, uint64_t len, void * arg
     rproxy  = request->rproxy;
     assert(rproxy != NULL);
 
+    rule    = request->rule;
+    assert(rproxy != NULL);
+
     if (!upstream_req) {
+        logger_log(rproxy->log, lzlog_err, "%s(): !upstream_req", __FUNCTION__);
+
 #if 0
         logger_log_error(rproxy->logger,
                          "[ERROR] send_upstream_new_chunk() upstream_req == NULL");
@@ -528,6 +539,8 @@ send_upstream_new_chunk(evhtp_request_t * upstream_req, uint64_t len, void * arg
     }
 
     if (!(ds_conn = request->downstream_conn)) {
+        logger_log_request_error(rule->err_log, request,
+                                 "%s(): downstream_conn == NULL", __FUNCTION__);
 #if 0
         logger_log_request_error(rproxy->logger, request,
                                  "[ERROR] send_upstream_new_chunk() request->downstream_conn == NULL");
@@ -536,6 +549,9 @@ send_upstream_new_chunk(evhtp_request_t * upstream_req, uint64_t len, void * arg
     }
 
     if (!ds_conn->connection || request->error > 0) {
+        logger_log_request_error(rule->err_log, request,
+                                 "%s(): conn = %p, err = %d",
+                                 __FUNCTION__, ds_conn->connection, request->error);
 #if 0
         logger_log_request_error(rproxy->logger, request,
                                  "[ERROR] send_upstream_new_chunk() conn->connection = %p, request->error = %d",
@@ -555,14 +571,24 @@ send_upstream_chunk_done(evhtp_request_t * upstream_req, void * arg) {
     request_t      * request;
     rproxy_t       * rproxy;
     downstream_c_t * ds_conn;
-
-    assert(arg != NULL);
+    rule_t         * rule;
 
     request = arg;
+    assert(request != NULL);
+
+    rule    = request->rule;
+    assert(rule != NULL);
+
     rproxy  = request->rproxy;
+    assert(rproxy != NULL);
+
     ds_conn = request->downstream_conn;
+    assert(ds_conn != NULL);
 
     if (!ds_conn->connection || request->error > 0) {
+        logger_log_request_error(rule->err_log, request,
+                                 "%s(): conn = %p, err = %d",
+                                 __FUNCTION__, ds_conn->connection, request->error);
 #if 0
         logger_log_request_error(rproxy->logger, request,
                                  "[ERROR] send_upstream_chunk_done() conn->connection = %p, request->error = %d",
@@ -579,15 +605,25 @@ evhtp_res
 send_upstream_chunks_done(evhtp_request_t * upstream_req, void * arg) {
     request_t      * request;
     rproxy_t       * rproxy;
+    rule_t         * rule;
     downstream_c_t * ds_conn;
 
-    assert(arg != NULL);
-
     request = arg;
+    assert(request != NULL);
+
+    rule    = request->rule;
+    assert(rule != NULL);
+
     rproxy  = request->rproxy;
+    assert(rproxy != NULL);
+
     ds_conn = request->downstream_conn;
+    assert(ds_conn != NULL);
 
     if (!ds_conn->connection || request->error > 0) {
+        logger_log_request_error(rule->err_log, request,
+                                 "%s(): dsconn = %p, err = %d", __FUNCTION__,
+                                 ds_conn->connection, request->error);
 #if 0
         logger_log_request_error(rproxy->logger, request,
                                  "[ERROR] send_upstream_chunks_done() conn->connection = %p, request->error = %d",
@@ -606,11 +642,15 @@ upstream_fini(evhtp_request_t * upstream_req, void * arg) {
     rproxy_t       * rproxy;
     downstream_c_t * ds_conn;
     downstream_t   * downstream;
+    rule_t         * rule;
     int              res;
 
-    assert(arg != NULL);
-
     request = arg;
+    assert(request != NULL);
+
+    rule    = request->rule;
+    assert(rule != NULL);
+
     rproxy  = request->rproxy;
     assert(rproxy != NULL);
 
@@ -626,6 +666,8 @@ upstream_fini(evhtp_request_t * upstream_req, void * arg) {
     assert(ds_conn != NULL);
 
     if (REQUEST_HAS_ERROR(request)) {
+        logger_log_request_error(rule->err_log, request,
+                                 "%s(): we should never get here!", __FUNCTION__);
 #if 0
         logger_log_request_error(rproxy->logger, request, "[CRIT] we should never get here!");
 #endif
@@ -650,15 +692,21 @@ upstream_error(evhtp_request_t * upstream_req, short events, void * arg) {
     request_t      * request;
     rproxy_t       * rproxy;
     downstream_c_t * ds_conn;
+    rule_t         * rule;
 
     request = arg;
     assert(request != NULL);
+
+    rule    = request->rule;
+    assert(rule != NULL);
 
     rproxy  = request->rproxy;
     assert(rproxy != NULL);
 
     evhtp_unset_all_hooks(&upstream_req->hooks);
 
+    logger_log(rproxy->log, lzlog_warn, "%s(): client aborted, err = %x",
+               __FUNCTION__, events);
 #if 0
     logger_log_error(rproxy->logger, "[WARN] client aborted error = %x", events);
 #endif
@@ -688,6 +736,8 @@ upstream_error(evhtp_request_t * upstream_req, short events, void * arg) {
             /* the request was completely finished, so we can safely set the
              * downstream as idle.
              */
+            logger_log_request_error(rule->err_log, request,
+                                     "%s(): req completed, client aborted", __FUNCTION__);
 #if 0
             logger_log_request_error(rproxy->logger, request,
                                      "[WARN] request completed, client aborted");
@@ -695,6 +745,8 @@ upstream_error(evhtp_request_t * upstream_req, short events, void * arg) {
             downstream_connection_set_idle(ds_conn);
         } else {
             /* request never completed, set the connection to down */
+            logger_log_request_error(rule->err_log, request,
+                                     "req incomplete, client aborted", __FUNCTION__);
 #if 0
             logger_log_request_error(rproxy->logger, request,
                                      "[WARN] request incomplete, client aborted");
@@ -763,27 +815,50 @@ start_downstream(lztq_elem * elem, void * arg) {
  *        to the downstream_t's in the rproxy->downstreams list. If found,
  *        create a rule_t and appends it to the rproxy->rules list.
  *
- * @param elem
- * @param arg
+ * @param elem a lztq elem with the type of vhost_cfg_t *
+ * @param arg  the vhost_t *
  *
  * @return
  */
 static int
-associate_rule_with_downstreams(lztq_elem * elem, void * arg) {
-    rproxy_t   * rproxy   = arg;
-    rule_cfg_t * rule_cfg = lztq_elem_data(elem);
+map_vhost_rules_to_downstreams(lztq_elem * elem, void * arg) {
+    vhost_t    * vhost = arg;
+    rproxy_t   * rproxy;
+    rule_cfg_t * rule_cfg;
     lztq_elem  * name_elem;
     lztq_elem  * name_elem_temp;
     rule_t     * rule;
 
+    vhost              = arg;
+    assert(arg != NULL);
+
+    rproxy             = vhost->rproxy;
     assert(rproxy != NULL);
+
+    rule_cfg           = lztq_elem_data(elem);
     assert(rule_cfg != NULL);
 
-    rule              = calloc(sizeof(rule_t), 1);
+    rule               = calloc(sizeof(rule_t), 1);
     assert(rule != NULL);
 
-    rule->rproxy      = rproxy;
-    rule->config      = rule_cfg;
+    rule->rproxy       = rproxy;
+    rule->config       = rule_cfg;
+    rule->parent_vhost = vhost;
+
+    /* setup rule specific logging options, if not found, logging is done via
+     * the parent vhost's logging functions.
+     */
+    if (rule_cfg->req_log) {
+        rule->req_log = logger_init(rule_cfg->req_log, 0);
+    } else {
+        rule->req_log = vhost->req_log;
+    }
+
+    if (rule_cfg->err_log) {
+        rule->err_log = logger_init(rule_cfg->err_log, 0);
+    } else {
+        rule->err_log = vhost->err_log;
+    }
 
     rule->downstreams = lztq_new();
     assert(rule->downstreams != NULL);
@@ -792,10 +867,11 @@ associate_rule_with_downstreams(lztq_elem * elem, void * arg) {
      * downstream_t and append it.
      */
     for (name_elem = lztq_first(rule_cfg->downstreams); name_elem != NULL; name_elem = name_elem_temp) {
-        const char   * ds_name = lztq_elem_data(name_elem);
+        const char   * ds_name;
         downstream_t * ds;
         lztq_elem    * nelem;
 
+        ds_name = lztq_elem_data(name_elem);
         assert(ds_name != NULL);
 
         if (!(ds = downstream_find_by_name(rproxy->downstreams, ds_name))) {
@@ -809,10 +885,16 @@ associate_rule_with_downstreams(lztq_elem * elem, void * arg) {
         name_elem_temp = lztq_next(name_elem);
     }
 
+
+    /* upstream_request_start is passed only the rule_cfg as an argument. this
+     * function will call file_rule_from_cfg to get the actual rule from the
+     * global rproxy->rules list. Since we compare pointers, it is safe to keep
+     * this as one single list.
+     */
     lztq_append(rproxy->rules, rule, sizeof(rule), NULL);
 
     return 0;
-} /* associate_rule_with_downstreams */
+} /* map_vhost_rules_to_downstreams */
 
 static rule_t *
 find_rule_from_cfg(rule_cfg_t * rule_cfg, lztq * rules) {
@@ -1070,6 +1152,10 @@ rproxy_thread_init(evhtp_t * htp, evthr_t * thr, void * arg) {
     rproxy->server_cfg = server_cfg;
     rproxy->evbase     = evbase;
     rproxy->htp        = htp;
+#if 0
+    rproxy->log        = logger_init(server_cfg->rproxy_cfg->log,
+                                     LZLOG_OPT_WLEVEL | LZLOG_OPT_WDATE);
+#endif
 
     /* create a downstream_t instance for each configured downstream */
     res = lztq_for_each(server_cfg->downstreams, add_downstream, rproxy);
@@ -1101,16 +1187,29 @@ rproxy_thread_init(evhtp_t * htp, evthr_t * thr, void * arg) {
          * Each rule_t has a downstreams list containing pointers to
          * (already allocated) downstream_t structures.
          */
-        lztq_elem * vhost_elem = NULL;
-        lztq_elem * vhost_temp = NULL;
+        lztq_elem * vhost_cfg_elem = NULL;
+        lztq_elem * vhost_cfg_temp = NULL;
 
-        for (vhost_elem = lztq_first(server_cfg->vhosts); vhost_elem; vhost_elem = vhost_temp) {
-            vhost_cfg_t * vhost = lztq_elem_data(vhost_elem);
+        for (vhost_cfg_elem = lztq_first(server_cfg->vhosts); vhost_cfg_elem; vhost_cfg_elem = vhost_cfg_temp) {
+            vhost_cfg_t * vhost_cfg = lztq_elem_data(vhost_cfg_elem);
+            vhost_t     * vhost;
 
-            res        = lztq_for_each(vhost->rule_cfgs, associate_rule_with_downstreams, rproxy);
+            vhost          = calloc(sizeof(vhost_t), 1);
+            assert(vhost != NULL);
+
+            /* initialize the vhost specific logging, these are used if a rule
+             * does not have its own logging configuration. This allows for rule
+             * specific logs, and falling back to a global one.
+             */
+            vhost->req_log = logger_init(vhost_cfg->req_log, 0);
+            vhost->err_log = logger_init(vhost_cfg->err_log, 0);
+            vhost->config  = vhost_cfg;
+            vhost->rproxy  = rproxy;
+
+            res = lztq_for_each(vhost_cfg->rule_cfgs, map_vhost_rules_to_downstreams, vhost);
             assert(res == 0);
 
-            vhost_temp = lztq_next(vhost_elem);
+            vhost_cfg_temp = lztq_next(vhost_cfg_elem);
         }
     }
 

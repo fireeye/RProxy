@@ -15,8 +15,6 @@
  */
 
 
-
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -140,7 +138,7 @@ logger_log_request_tostr(logger_t * logger, request_t * request, evbuf_t * buf) 
 
                 if (sres >= sizeof(tmp) || sres < 0) {
                     /* overflow condition, shouldn't ever get here */
-                    logger_log_error(logger, "[CRIT] overflow in log_request!\n");
+                    fprintf(stderr, "[CRIT] overflow in log_request!\n");
                     exit(EXIT_FAILURE);
                 }
 
@@ -181,7 +179,7 @@ logger_log_request_tostr(logger_t * logger, request_t * request, evbuf_t * buf) 
 
                 if (sres >= sizeof(tmp) || sres < 0) {
                     /* overflow condition, shouldn't get here */
-                    logger_log_error(logger, "[CRIT] overflow in log_request!\n");
+                    fprintf(stderr, "[CRIT] overflow in log_request!\n");
                     exit(EXIT_FAILURE);
                 }
 
@@ -193,7 +191,7 @@ logger_log_request_tostr(logger_t * logger, request_t * request, evbuf_t * buf) 
 
                 if (sres >= sizeof(tmp) || sres < 0) {
                     /* overflow condition, shouldn't get here */
-                    logger_log_error(logger, "[CRIT] overflow in log_request!\n");
+                    fprintf(stderr, "[CRIT] overflow in log_request!\n");
                     exit(EXIT_FAILURE);
                 }
 
@@ -246,49 +244,44 @@ logger_log_request_tostr(logger_t * logger, request_t * request, evbuf_t * buf) 
 }         /* logger_log_request_tostr */
 
 void
-logger_log_errorf(logger_t * logger, char * fmt, ...) {
+logger_log(logger_t * logger, lzlog_level level, char * fmt, ...) {
     va_list ap;
 
-    if (logger == NULL) {
-        return;
-    }
-
-    va_start(ap, fmt);
-    vfprintf(logger->errorlog, fmt, ap);
-    va_end(ap);
-
-    fprintf(logger->errorlog, "\n");
-    fflush(logger->errorlog);
-}
-
-void
-logger_log_request_errorf(logger_t * logger, request_t * request, char * fmt, ...) {
-    va_list   ap;
-    evbuf_t * buf;
 
     if (!logger) {
         return;
     }
 
-    if (!(buf = evbuffer_new())) {
-        logger_log_error(logger,
-                         "[CRIT] Could not create new evbuffer! %s\n",
-                         strerror(errno));
-        exit(EXIT_FAILURE);
+    va_start(ap, fmt);
+    {
+        lzlog_write(logger->log, level, fmt, ap);
+    }
+    va_end(ap);
+}
+
+void
+logger_log_request_error(logger_t * logger, request_t * request, char * fmt, ...) {
+    va_list   ap;
+    evbuf_t * buf;
+
+    if (!logger || !request) {
+        return;
     }
 
-    logger_log_request_tostr(logger, request, buf);
-    evbuffer_add(buf, "\0", 1);
+    buf = evbuffer_new();
+    assert(buf != NULL);
 
-    /* Write the error text first */
+    logger_log_request_tostr(logger, request, buf);
+    evbuffer_add(buf, ", ", 2);
+
     va_start(ap, fmt);
-    vfprintf(logger->errorlog, fmt, ap);
+    {
+        evbuffer_add_vprintf(buf, fmt, ap);
+    }
     va_end(ap);
 
-    /* Write the request str */
-    fprintf(logger->errorlog, ", %s\n", evbuffer_pullup(buf, -1));
-    evbuffer_free(buf);
-}         /* logger_log_request_error */
+    lzlog_write(logger->log, lzlog_err, evbuffer_pullup(buf, -1));
+}
 
 void
 logger_log_request(logger_t * logger, request_t * request) {
@@ -298,17 +291,13 @@ logger_log_request(logger_t * logger, request_t * request) {
         return;
     }
 
-    if (!(buf = evbuffer_new())) {
-        logger_log_error(logger,
-                         "[CRIT] Could not create new evbuffer! %s\n",
-                         strerror(errno));
-        exit(EXIT_FAILURE);
-    }
+    buf = evbuffer_new();
+    assert(buf != NULL);
 
     logger_log_request_tostr(logger, request, buf);
-
     evbuffer_add(buf, "\0", 1);
-    logger_write(logger, evbuffer_pullup(buf, -1));
+
+    lzlog_write(logger->log, 1, "%s", evbuffer_pullup(buf, -1));
 
     evbuffer_free(buf);
 }         /* logger_log_request */
@@ -377,133 +366,8 @@ logger_arg_addchar(logger_arg_t * arg, const char c) {
     return 0;
 }
 
-void *
-logger_syslog_open(void * largs) {
-    int facility;
-
-    if (largs == NULL) {
-        facility = LOG_LOCAL7;
-    } else {
-        facility = *((int *)(largs));
-    }
-
-    openlog(NULL, LOG_NDELAY | LOG_PID, facility);
-
-    return largs;
-}
-
-size_t
-logger_syslog_write(const char * str, void * arg) {
-    if (str == NULL) {
-        return 0;
-    }
-
-    syslog(LOG_INFO, "%s", str);
-
-    return strlen(str);
-}
-
-void
-logger_syslog_close(void * arg) {
-    closelog();
-}
-
-void *
-logger_file_open(void * largs) {
-    const char * file;
-    FILE       * fp;
-
-    if (!(file = largs)) {
-        return (void *)stdout;
-    }
-
-    if (!(fp = fopen(file, "a+"))) {
-        fprintf(stderr, "Could not open file %s: %s\n",
-                file, strerror(errno));
-        exit(EXIT_FAILURE);
-    }
-
-    return (void *)fp;
-}
-
-size_t
-logger_file_write(const char * str, void * arg) {
-    FILE * fp;
-    size_t len;
-
-    if (!str) {
-        return 0;
-    }
-
-    if (!(fp = arg)) {
-        return 0;
-    }
-
-    len  = fwrite((void *)str, strlen(str), 1, fp);
-    len += fwrite("\n", 1, 1, fp);
-
-    fflush(fp);
-
-    return len;
-}
-
-void
-logger_file_close(void * arg) {
-    FILE * fp;
-
-    if (!(fp = arg)) {
-        return;
-    }
-
-    fclose(fp);
-    return;
-}
-
-void *
-logger_open(logger_t * logger) {
-    void * largs;
-
-    if (!logger) {
-        return NULL;
-    }
-
-    switch (logger->config->type) {
-        case logger_type_file:
-            largs = logger->config->filename;
-            break;
-        case logger_type_syslog:
-            largs = &logger->config->syslog_facility;
-            break;
-        default:
-            largs = NULL;
-            break;
-    }
-
-    if (logger->fns.logger_open) {
-        logger->fnarg = (logger->fns.logger_open)(largs);
-    }
-
-    return logger->fnarg;
-}
-
-size_t
-logger_write(logger_t * logger, const char * str) {
-    if (logger && logger->fns.logger_write) {
-        return (logger->fns.logger_write)(str, logger->fnarg);
-    }
-
-    return 0;
-}
-
-void
-logger_close(logger_t * logger) {
-    if (logger->fns.logger_close) {
-        return (logger->fns.logger_close)(logger->fnarg);
-    }
-}
-
 logger_t *
-logger_init(logger_cfg_t * c) {
+logger_init(logger_cfg_t * c, int opts) {
     logger_t   * logger;
     const char * strp;
 
@@ -521,19 +385,20 @@ logger_init(logger_cfg_t * c) {
 
     switch (c->type) {
         case logger_type_file:
-            logger->fns.logger_open  = logger_file_open;
-            logger->fns.logger_write = logger_file_write;
-            logger->fns.logger_close = logger_file_close;
+            logger->log = lzlog_file_new(c->path, "RProxy", opts);
             break;
         case logger_type_syslog:
-            logger->fns.logger_open  = logger_syslog_open;
-            logger->fns.logger_write = logger_syslog_write;
-            logger->fns.logger_close = logger_syslog_close;
-            break;
-        case logger_type_fd:
+            logger->log = lzlog_syslog_new("RProxy", opts, c->facility);
             break;
         default:
-            break;
+            free(logger);
+            return NULL;
+    }
+
+    lzlog_set_level(logger->log, c->level);
+
+    if (c->format == NULL) {
+        return logger;
     }
 
     for (strp = c->format; *strp != '\0'; strp++) {
@@ -596,18 +461,6 @@ logger_init(logger_cfg_t * c) {
 
         if (insert > 0) {
             TAILQ_INSERT_TAIL(&logger->args, larg, next);
-        }
-    }
-
-    /* open error log */
-    if (c->errorlog == NULL) {
-        logger->errorlog = stderr;
-    } else {
-        logger->errorlog = fopen(c->errorlog, "a+");
-
-        if (logger->errorlog == NULL) {
-            fprintf(stderr, "Could not open errorlog %s\n", strerror(errno));
-            exit(EXIT_FAILURE);
         }
     }
 
