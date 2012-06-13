@@ -356,11 +356,6 @@ send_upstream_headers(evhtp_request_t * upstream_req, evhtp_headers_t * hdrs, vo
                 logger_log_request_error(rule->err_log, request,
                                          "%s(): couldn't create new header %s",
                                          __FUNCTION__, strerror(errno));
-#if 0
-                logger_log_request_error(rproxy->logger, request,
-                                         "[CRIT] Could not create new header! %s",
-                                         strerror(errno));
-#endif
                 exit(EXIT_FAILURE);
             }
 
@@ -390,10 +385,6 @@ send_upstream_headers(evhtp_request_t * upstream_req, evhtp_headers_t * hdrs, vo
             logger_log_request_error(rule->err_log, request,
                                      "%s(): unknown proto %d",
                                      __FUNCTION__, upstream_req->proto);
-#if 0
-            logger_log_request_error(rproxy->logger, request,
-                                     "[ERROR] send_upstream_headers() unknown proto %d", upstream_req->proto);
-#endif
             return EVHTP_RES_ERROR;
     } /* switch */
 
@@ -411,11 +402,6 @@ send_upstream_headers(evhtp_request_t * upstream_req, evhtp_headers_t * hdrs, vo
         logger_log_request_error(rule->err_log, request,
                                  "%s(): couldn't create evbuffer (%s)",
                                  __FUNCTION__, strerror(errno));
-#if 0
-        logger_log_request_error(rproxy->logger, request,
-                                 "[CRIT] Could not create new evbuffer! %s",
-                                 strerror(errno));
-#endif
         exit(EXIT_FAILURE);
     }
 
@@ -531,20 +517,12 @@ send_upstream_new_chunk(evhtp_request_t * upstream_req, uint64_t len, void * arg
     if (!upstream_req) {
         logger_log(rproxy->log, lzlog_err, "%s(): !upstream_req", __FUNCTION__);
 
-#if 0
-        logger_log_error(rproxy->logger,
-                         "[ERROR] send_upstream_new_chunk() upstream_req == NULL");
-#endif
         return EVHTP_RES_FATAL;
     }
 
     if (!(ds_conn = request->downstream_conn)) {
         logger_log_request_error(rule->err_log, request,
                                  "%s(): downstream_conn == NULL", __FUNCTION__);
-#if 0
-        logger_log_request_error(rproxy->logger, request,
-                                 "[ERROR] send_upstream_new_chunk() request->downstream_conn == NULL");
-#endif
         return EVHTP_RES_FATAL;
     }
 
@@ -552,11 +530,6 @@ send_upstream_new_chunk(evhtp_request_t * upstream_req, uint64_t len, void * arg
         logger_log_request_error(rule->err_log, request,
                                  "%s(): conn = %p, err = %d",
                                  __FUNCTION__, ds_conn->connection, request->error);
-#if 0
-        logger_log_request_error(rproxy->logger, request,
-                                 "[ERROR] send_upstream_new_chunk() conn->connection = %p, request->error = %d",
-                                 ds_conn->connection, request->error);
-#endif
         return EVHTP_RES_ERROR;
     }
 
@@ -589,11 +562,6 @@ send_upstream_chunk_done(evhtp_request_t * upstream_req, void * arg) {
         logger_log_request_error(rule->err_log, request,
                                  "%s(): conn = %p, err = %d",
                                  __FUNCTION__, ds_conn->connection, request->error);
-#if 0
-        logger_log_request_error(rproxy->logger, request,
-                                 "[ERROR] send_upstream_chunk_done() conn->connection = %p, request->error = %d",
-                                 ds_conn->connection, request->error);
-#endif
         return EVHTP_RES_ERROR;
     }
 
@@ -624,11 +592,6 @@ send_upstream_chunks_done(evhtp_request_t * upstream_req, void * arg) {
         logger_log_request_error(rule->err_log, request,
                                  "%s(): dsconn = %p, err = %d", __FUNCTION__,
                                  ds_conn->connection, request->error);
-#if 0
-        logger_log_request_error(rproxy->logger, request,
-                                 "[ERROR] send_upstream_chunks_done() conn->connection = %p, request->error = %d",
-                                 ds_conn->connection, request->error);
-#endif
         return EVHTP_RES_ERROR;
     }
 
@@ -668,9 +631,6 @@ upstream_fini(evhtp_request_t * upstream_req, void * arg) {
     if (REQUEST_HAS_ERROR(request)) {
         logger_log_request_error(rule->err_log, request,
                                  "%s(): we should never get here!", __FUNCTION__);
-#if 0
-        logger_log_request_error(rproxy->logger, request, "[CRIT] we should never get here!");
-#endif
         downstream_connection_set_down(ds_conn);
     } else {
         downstream_connection_set_idle(ds_conn);
@@ -707,9 +667,6 @@ upstream_error(evhtp_request_t * upstream_req, short events, void * arg) {
 
     logger_log(rproxy->log, lzlog_warn, "%s(): client aborted, err = %x",
                __FUNCTION__, events);
-#if 0
-    logger_log_error(rproxy->logger, "[WARN] client aborted error = %x", events);
-#endif
 
     if (request->pending) {
         /* upstream encountered socket error while still in a pending state */
@@ -738,19 +695,11 @@ upstream_error(evhtp_request_t * upstream_req, short events, void * arg) {
              */
             logger_log_request_error(rule->err_log, request,
                                      "%s(): req completed, client aborted", __FUNCTION__);
-#if 0
-            logger_log_request_error(rproxy->logger, request,
-                                     "[WARN] request completed, client aborted");
-#endif
             downstream_connection_set_idle(ds_conn);
         } else {
             /* request never completed, set the connection to down */
             logger_log_request_error(rule->err_log, request,
                                      "req incomplete, client aborted", __FUNCTION__);
-#if 0
-            logger_log_request_error(rproxy->logger, request,
-                                     "[WARN] request incomplete, client aborted");
-#endif
             downstream_connection_set_down(ds_conn);
         }
 

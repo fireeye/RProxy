@@ -476,11 +476,7 @@ downstream_connection_set_idle(downstream_c_t * connection) {
                        __FUNCTION__,
                        downstream->config->host,
                        downstream->config->port);
-#if 0
-            logger_log_error(downstream->rproxy->logger,
-                             "[INFO] Downstream %s:%d is now up",
-                             downstream->config->host, downstream->config->port);
-#endif
+
             downstream->num_down -= 1;
 
             TAILQ_REMOVE(&downstream->down, connection, next);
@@ -543,13 +539,6 @@ downstream_connection_set_down(downstream_c_t * connection) {
                    connection->sport,
                    downstream->config->host,
                    downstream->config->port);
-#if 0
-        logger_log_error(downstream->rproxy->logger,
-                         "[ERROR] Downstream proxy:%d -> %s:%d is down",
-                         connection->sport,
-                         downstream->config->host,
-                         downstream->config->port);
-#endif
     }
 
     switch (connection->status) {
@@ -917,9 +906,6 @@ downstream_connection_get(rule_t * rule) {
         default:
             logger_log(rule->rproxy->log, lzlog_crit,
                        "%s(): unknown lb method %d", __FUNCTION__, rcfg->lb_method);
-#if 0
-            logger_log_error(rproxy->logger, "[CRIT] Unknown loadbalance method %d", scfg->lbalance_method);
-#endif
             break;
     }
 
@@ -1031,13 +1017,6 @@ downstream_connection_eventcb(evbev_t * bev, short events, void * arg) {
                                          connection->sport,
                                          downstream->config->host,
                                          downstream->config->port);
-#if 0
-                logger_log_request_error(rproxy->logger, request,
-                                         "[WARN] Downstream request proxy:%d -> %s:%d never completed",
-                                         connection->sport,
-                                         downstream->config->host,
-                                         downstream->config->port);
-#endif
 
                 request_free(request);
                 evhtp_connection_free(up_conn);
@@ -1066,17 +1045,6 @@ downstream_connection_eventcb(evbev_t * bev, short events, void * arg) {
                    (events & BEV_EVENT_ERROR) ? "ERROR " : "",
                    (events & BEV_EVENT_TIMEOUT) ? "TIMEOUT " : "",
                    (events & BEV_EVENT_CONNECTED) ? "CONNECTED " : "");
-#if 0
-        logger_log_error(rproxy->logger,
-                         "[CRIT] downstream socket event (source port=%d) error %d [ %s%s%s%s%s%s]",
-                         connection->sport, events,
-                         (events & BEV_EVENT_READING) ? "READING " : "",
-                         (events & BEV_EVENT_WRITING) ? "WRITING " : "",
-                         (events & BEV_EVENT_EOF)     ? "EOF " : "",
-                         (events & BEV_EVENT_ERROR) ? "ERROR " : "",
-                         (events & BEV_EVENT_TIMEOUT) ? "TIMEOUT " : "",
-                         (events & BEV_EVENT_CONNECTED) ? "CONNECTED " : "");
-#endif
     }
 
 
@@ -1174,9 +1142,6 @@ downstream_connection_readcb(evbev_t * bev, void * arg) {
          */
 
         logger_log_request(rule->req_log, request);
-#if 0
-        logger_log_request(rproxy->logger, request);
-#endif
 
         return evhtp_send_reply_end(request->upstream_request);
     }
@@ -1207,9 +1172,7 @@ downstream_connection_readcb(evbev_t * bev, void * arg) {
 
             if (request->done) {
                 logger_log_request(rule->req_log, request);
-#if 0
-                logger_log_request(rproxy->logger, request);
-#endif
+
                 evhtp_send_reply_end(request->upstream_request);
             } else {
                 downstream_connection_set_down(connection);
@@ -1325,11 +1288,6 @@ downstream_connection_init(evbase_t * evbase, downstream_t * downstream) {
             logger_log(downstream->rproxy->log, lzlog_crit,
                        "%s(): could not create ds conn (%s)",
                        __FUNCTION__, strerror(errno));
-#if 0
-            logger_log_error(downstream->rproxy->logger,
-                             "[CRIT] Could not create new downstream connection! %s",
-                             strerror(errno));
-#endif
             exit(EXIT_FAILURE);
         }
 
