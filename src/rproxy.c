@@ -938,7 +938,7 @@ upstream_pre_accept(evhtp_connection_t * up_conn, void * arg) {
 }
 
 evhtp_res
-upstream_request_start(evhtp_request_t * up_req, evhtp_path_t * path, void * arg) {
+upstream_request_start(evhtp_request_t * up_req, const char * hostname, void * arg) {
     /* This function is called whenever evhtp has matched a rule on a request.
      *
      * Once the downstream request has been initialized and setup, this function
@@ -1016,7 +1016,7 @@ upstream_request_start(evhtp_request_t * up_req, evhtp_path_t * path, void * arg
         evtimer_add(ds_req->pending_ev, &serv_cfg->pending_timeout);
     }
 
-    /* Since this is called after a path match, we set upstream request
+    /* Since this is called after a host header match, we set upstream request
      * specific evhtp hooks specific to this request. This is done in order
      * to stream the upstream data directly to the downstream and allow for
      * the modification of the request made to the downstream.
@@ -1168,7 +1168,7 @@ rproxy_thread_init(evhtp_t * htp, evthr_t * thr, void * arg) {
 /**
  * @brief Set an evhtp callback based on information in a single rule_cfg_t
  *        structure. Based on the rule type, we either use set_cb, set_regex_cb,
- *        or set_glob_cb. Only one real callback set is an on_path hook.
+ *        or set_glob_cb. Only one real callback set is an on_hostname hook.
  *
  * @param elem
  * @param arg
@@ -1198,7 +1198,7 @@ add_callback_rule(lztq_elem * elem, void * arg) {
     /* if one of the callbacks matches, upstream_request_start will be called
      * with the argument of this rule_cfg_t
      */
-    evhtp_set_hook(&cb->hooks, evhtp_hook_on_path,
+    evhtp_set_hook(&cb->hooks, evhtp_hook_on_hostname,
                    upstream_request_start, rule);
 
     return 0;
