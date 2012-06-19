@@ -160,6 +160,51 @@ proxy_parser_headers_complete(htparser * p) {
         return -1;
     }
 
+#if 0
+    if (htparser_get_status(p) == 377) {
+        /* check for a X-Internal-Redirect header, and if found, we make a new
+         * connection to the value of this and send the request that way.
+         */
+        const char * redir_host;
+
+        if ((redir_host = evhtp_headers_find_header(upstream_r->headers_out))) {
+            evbev_t * conn;
+
+            /* set the upstream_err so that downstream_connection_readcb's
+             * return from htparser_run will set this downstream to down.
+             *
+             * TODO: fully process the response so that we don't have
+             *      to set the downstream as down.
+             */
+            request->upstream_err = 1;
+
+            conn = bufferevent_socket_new(rproxy->evbase, -1,
+                                          BEV_OPT_CLOSE_ON_FREE);
+
+            bufferevent_socket_connect_hostname(conn, rproxy->dns_base,
+                                                AF_INET, redir_host, 8081);
+
+#if 0
+            downstream_t     * redir_ds;
+            downstream_cfg_t * redir_ds_cfg;
+
+            redir_ds_cfg          = downstream_cfg_new();
+            assert(redir_ds_cfg != NULL);
+
+            redir_ds_cfg->host    = strdup(redir_host);
+            assert(redir_ds_cfg != NULL);
+
+            redir_ds_cfg->port    = 8081; /* XXX test port (we don't parse yet) */
+            redir_ds_cfg->enabled = true;
+
+            redir_ds = downstream_new(rproxy, redir_ds_cfg);
+            assert(redir_ds != NULL);
+#endif
+        }
+    }
+#endif
+
+
     /* downstream headers have been fully parsed, start streaming
      * further data to the upstream
      */

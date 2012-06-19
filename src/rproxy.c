@@ -21,19 +21,11 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-#include <grp.h>
-#include <pwd.h>
 #include <sys/time.h>
 #include <unistd.h>
-#include <sys/resource.h>
 
 #ifdef USE_MALLOPT
 #include <malloc.h>
-#endif
-
-#ifndef NO_RLIMITS
-#include <sys/time.h>
-#include <sys/resource.h>
 #endif
 
 #include "rproxy.h"
@@ -274,20 +266,6 @@ passthrough_eventcb(evbev_t * bev, short events, void * arg) {
     request_free(request);
 }
 
-int
-write_header_to_evbuffer(evhtp_header_t * header, void * arg) {
-    evbuf_t * buf;
-
-    buf = arg;
-    assert(buf != NULL);
-
-    evbuffer_add(buf, header->key, header->klen);
-    evbuffer_add(buf, ": ", 2);
-    evbuffer_add(buf, header->val, header->vlen);
-    evbuffer_add(buf, "\r\n", 2);
-    return 0;
-}
-
 evhtp_res
 send_upstream_headers(evhtp_request_t * upstream_req, evhtp_headers_t * hdrs, void * arg) {
     /* evhtp has parsed the inital request (request + headers). From this
@@ -388,33 +366,9 @@ send_upstream_headers(evhtp_request_t * upstream_req, evhtp_headers_t * hdrs, vo
             return EVHTP_RES_ERROR;
     } /* switch */
 
-    if (upstream_req->uri && upstream_req->uri->query_raw) {
-        query_args = upstream_req->uri->query_raw;
-    } else {
-        query_args = "";
-    }
+    buf = util_request_to_evbuffer(upstream_req);
+    assert(buf != NULL);
 
-    if (*query_args == '?') {
-        query_args++;
-    }
-
-    if (!(buf = evbuffer_new())) {
-        logger_log_request_error(rule->err_log, request,
-                                 "%s(): couldn't create evbuffer (%s)",
-                                 __FUNCTION__, strerror(errno));
-        exit(EXIT_FAILURE);
-    }
-
-    evbuffer_add_printf(buf, "%s %s%s%s HTTP/%d.%d\r\n",
-                        htparser_get_methodstr(upstream_req->conn->parser),
-                        upstream_req->uri->path->full,
-                        *query_args ? "?" : "", query_args,
-                        htparser_get_major(upstream_req->conn->parser),
-                        htparser_get_minor(upstream_req->conn->parser));
-
-    evhtp_headers_for_each(hdrs, write_header_to_evbuffer, buf);
-
-    evbuffer_add(buf, "\r\n", 2);
     bufferevent_write_buffer(request->downstream_bev, buf);
     evbuffer_free(buf);
 
@@ -1370,131 +1324,6 @@ rproxy_process_pending(int fd, short which, void * arg) {
     }
 } /* rproxy_process_pending */
 
-static void
-rproxy_dropperms(const char * user, const char * group) {
-    if (group) {
-        struct group * grp;
-
-        if (!(grp = getgrnam(group))) {
-            fprintf(stderr, "No such group '%s'\n", group);
-            exit(1);
-        }
-
-        if (setgid(grp->gr_gid) != 0) {
-            fprintf(stderr, "Could not grp perm to '%s' (%s)\n",
-                    group, strerror(errno));
-            exit(1);
-        }
-    }
-
-    if (user) {
-        struct passwd * usr;
-
-        if (!(usr = getpwnam(user))) {
-            fprintf(stderr, "No such user '%s'\n", user);
-            exit(1);
-        }
-
-        if (seteuid(usr->pw_uid) != 0) {
-            fprintf(stderr, "Could not usr perm to '%s' (%s)\n",
-                    user, strerror(errno));
-            exit(1);
-        }
-    }
-}
-
-int
-rproxy_daemonize(char * root, int noclose) {
-    int fd;
-
-    switch (fork()) {
-        case -1:
-            return -1;
-        case 0:
-            break;
-        default:
-            exit(EXIT_SUCCESS);
-    }
-
-    if (setsid() == -1) {
-        return -1;
-    }
-
-    if (root == 0) {
-        if (chdir(root) != 0) {
-            perror("chdir");
-            return -1;
-        }
-    }
-
-    if (noclose == 0 && (fd = open("/dev/null", O_RDWR, 0)) != -1) {
-        if (dup2(fd, STDIN_FILENO) < 0) {
-            perror("dup2 stdin");
-            return -1;
-        }
-        if (dup2(fd, STDOUT_FILENO) < 0) {
-            perror("dup2 stdout");
-            return -1;
-        }
-        if (dup2(fd, STDERR_FILENO) < 0) {
-            perror("dup2 stderr");
-            return -1;
-        }
-
-        if (fd > STDERR_FILENO) {
-            if (close(fd) < 0) {
-                perror("close");
-                return -1;
-            }
-        }
-    }
-    return 0;
-} /* daemonize */
-
-int
-rproxy_set_rlimits(int nofiles) {
-#ifndef NO_RLIMITS
-    struct rlimit limit;
-    rlim_t        max_nofiles;
-
-    if (nofiles <= 0) {
-        return -1;
-    }
-
-    if (getrlimit(RLIMIT_NOFILE, &limit) == -1) {
-        fprintf(stderr, "Could not obtain curr NOFILE lim: %s\n", strerror(errno));
-        return 0;
-    }
-
-    if (nofiles > limit.rlim_max) {
-        fprintf(stderr, "Unable to set curr NOFILE (requested=%d, sys-limit=%d)\n",
-                (int)nofiles, (int)limit.rlim_max);
-        fprintf(stderr, "Please make sure your systems limits.conf is set high enough (usually in /etc/security/limits.conf!\n");
-        return -1;
-    }
-
-    if (nofiles < 10000) {
-        fprintf(stderr, "WARNING: %d max-nofiles is very small, this could be bad, lets check...\n", nofiles);
-
-        if ((int)limit.rlim_max >= 10000) {
-            fprintf(stderr, "INFO: using %d (your hard-limit) on max-nofiles instead of %d!\n", (int)limit.rlim_max, nofiles);
-            nofiles = limit.rlim_max;
-        } else {
-            fprintf(stderr, "WARN: nope, can't go any higher, you may want to fix this...\n");
-        }
-    }
-
-    limit.rlim_cur = nofiles;
-
-    if (setrlimit(RLIMIT_NOFILE, &limit) == -1) {
-        fprintf(stderr, "Could not set NOFILE lim: %s\n", strerror(errno));
-        return -1;
-    }
-
-#endif
-    return 0;
-} /* rproxy_set_rlimits */
-
 int
 main(int argc, char ** argv) {
     rproxy_cfg_t * rproxy_cfg;
@@ -1512,20 +1341,18 @@ main(int argc, char ** argv) {
         return -1;
     }
 
-#if 0
 #ifdef USE_MALLOPT
     if (rproxy_cfg->mem_trimsz) {
         mallopt(M_TRIM_THRESHOLD, rproxy_cfg->mem_trimsz);
     }
 #endif
-#endif
 
-    if (rproxy_set_rlimits(rproxy_cfg->max_nofile) < 0) {
+    if (util_set_rlimits(rproxy_cfg->max_nofile) < 0) {
         exit(-1);
     }
 
     if (rproxy_cfg->daemonize == true) {
-        if (rproxy_daemonize(rproxy_cfg->rootdir, 1) < 0) {
+        if (util_daemonize(rproxy_cfg->rootdir, 1) < 0) {
             exit(-1);
         }
     }
@@ -1539,7 +1366,7 @@ main(int argc, char ** argv) {
     rproxy_init(evbase, rproxy_cfg);
 
     if (rproxy_cfg->user || rproxy_cfg->group) {
-        rproxy_dropperms(rproxy_cfg->user, rproxy_cfg->group);
+        util_dropperms(rproxy_cfg->user, rproxy_cfg->group);
     }
 
     event_base_loop(evbase, 0);

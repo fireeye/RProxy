@@ -397,5 +397,16 @@ void       logger_log(logger_t * logger, lzlog_level level, char * fmt, ...);
 void       logger_log_request(logger_t * logger, request_t * request);
 void       logger_log_request_error(logger_t * logger, request_t * request, char * fmt, ...);
 
+/***********************************************
+ * Utility functions.
+ **********************************************/
+void      util_dropperms(const char * user, const char * group);
+int       util_daemonize(char * root, int noclose);
+int       util_set_rlimits(int nofiles);
+
+evbuf_t * util_request_to_evbuffer(evhtp_request_t * request);
+int       util_write_header_to_evbuffer(evhtp_header_t * hdr, void * arg);
+
+
 #endif
 
