@@ -1123,6 +1123,7 @@ downstream_connection_readcb(evbev_t * bev, void * arg) {
 
         /* free up our request */
         request_free(request);
+        connection->request = NULL;
     }
 
     /* if we get to here, we are not done with downstream -> upstream IO */
