@@ -255,6 +255,7 @@ passthrough_eventcb(evbev_t * bev, short events, void * arg) {
     request_t      * request;
     downstream_c_t * ds_conn;
 
+
     request = arg;
     assert(request != NULL);
 

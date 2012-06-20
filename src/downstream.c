@@ -26,6 +26,47 @@
 
 #include "rproxy.h"
 
+void
+redir_readcb(evbev_t * bev, void * arg) {
+    /* data was read from the redir downstream, so we must send this data to the
+     * upstream bufferevent.
+     */
+    request_t * request;
+
+    request = arg;
+    assert(request != NULL);
+
+    bufferevent_write_buffer(request->upstream_bev, bufferevent_get_input(bev));
+}
+
+void
+redir_writecb(evbev_t * bev, void * arg) {
+    return;
+}
+
+void
+redir_eventcb(evbev_t * bev, short events, void * arg) {
+    request_t * request;
+
+    request = arg;
+    assert(request != NULL);
+
+    if ((events & BEV_EVENT_CONNECTED)) {
+        /* we have successfully established a connection to the redir host, so
+         * we can re-enable the read side of the upstream bufferevent.
+         */
+        bufferevent_enable(request->upstream_bev, EV_READ | EV_WRITE);
+        return;
+    }
+
+    printf("%s\n", strerror(errno));
+    bufferevent_free(request->upstream_bev);
+    bufferevent_free(request->downstream_bev);
+
+    request_free(request);
+    return;
+}
+
 /*****************************************
  * Downstream response parsing functions
  ****************************************/
@@ -166,9 +207,11 @@ proxy_parser_headers_complete(htparser * p) {
          */
         const char * redir_host;
 
-        if ((redir_host = evhtp_headers_find_header(upstream_r->headers_out,
-			"x-internal-redirect"))) {
+        if ((redir_host = evhtp_header_find(upstream_r->headers_out,
+                                            "x-internal-redirect"))) {
             evbev_t * conn;
+            evbev_t * upstream_bev;
+            evbuf_t * request_buf;
 
             /* set the upstream_err so that downstream_connection_readcb's
              * return from htparser_run will set this downstream to down.
@@ -178,11 +221,54 @@ proxy_parser_headers_complete(htparser * p) {
              */
             request->upstream_err = 1;
 
+            /* we need to set the downstream_connection's request pointer to
+             * NULL so that downstream_connection_readcb does not call
+             * request_free() on this request_t.
+             */
+            request->downstream_conn->request = NULL;
+
+            /* generate the request which will be sent to the redir host once it
+             * establishes.
+             */
+            request_buf  = util_request_to_evbuffer(upstream_r);
+            assert(request_buf != NULL);
+
+            /* take ownership of the evhtp request bufferevent since this
+             * connection will now act as if it is a passthrough socket.
+             */
+            upstream_bev = evhtp_connection_take_ownership(evhtp_request_get_connection(upstream_r));
+            assert(upstream_bev != NULL);
+
+            /* do not enable read side of the bufferevent yet, we do this once
+             * the connection has been established to the redir host.
+             */
+            bufferevent_disable(upstream_bev, EV_READ);
+
             conn = bufferevent_socket_new(rproxy->evbase, -1,
                                           BEV_OPT_CLOSE_ON_FREE);
+            assert(conn != NULL);
 
+            /* TODO: parse the host:port, we just use 6999 as a test right now */
             bufferevent_socket_connect_hostname(conn, rproxy->dns_base,
-                                                AF_INET, redir_host, 8081);
+                                                AF_INET, redir_host, 6999);
+
+            bufferevent_setcb(conn,
+                              redir_readcb,
+                              redir_writecb,
+                              redir_eventcb, request);
+            bufferevent_enable(conn, EV_READ | EV_WRITE);
+
+            /* send the initial request to the downstream which will be written
+             * once the connection has been established.
+             */
+            bufferevent_write_buffer(conn, request_buf);
+
+            request->downstream_bev = conn;
+
+            evbuffer_free(request_buf);
+
+            /* signal htparser_run to stop executing other callbacks */
+            return -1;
         }
     }
 
@@ -1206,7 +1292,8 @@ downstream_connection_readcb(evbev_t * bev, void * arg) {
         }
 
         /* free up our request */
-        request_free(request);
+        request_free(connection->request);
+        connection->request = NULL;
     }
 
     /* if we get to here, we are not done with downstream -> upstream IO */
