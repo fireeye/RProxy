@@ -92,6 +92,7 @@ struct rule_cfg {
     logger_cfg_t  * req_log;     /**< request logging config */
     logger_cfg_t  * err_log;     /**< error logging config */
     bool            passthrough;
+    bool            allow_redirect;
     int             has_up_read_timeout;
     int             has_up_write_timeout;
     struct timeval  up_read_timeout;

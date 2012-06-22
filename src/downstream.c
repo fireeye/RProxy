@@ -201,7 +201,7 @@ proxy_parser_headers_complete(htparser * p) {
         return -1;
     }
 
-    if (htparser_get_status(p) == 377) {
+    if (htparser_get_status(p) == 377 && request->rule->config->allow_redirect == true) {
         /* check for a X-Internal-Redirect header, and if found, we make a new
          * connection to the value of this and send the request that way.
          */
@@ -212,6 +212,39 @@ proxy_parser_headers_complete(htparser * p) {
             evbev_t * conn;
             evbev_t * upstream_bev;
             evbuf_t * request_buf;
+            char    * redir_host_cpy;
+            char    * hoststr;
+            char    * portstr;
+            char    * host;
+            char    * cp;
+            uint16_t  port;
+
+            redir_host_cpy = strdup(redir_host);
+            assert(redir_host_cpy != NULL);
+
+            /* parse the hostname:port value into host and port, if no port
+             * token is found, it defaults to 80
+             */
+            cp      = strchr(redir_host_cpy, ':');
+
+            hoststr = redir_host_cpy;
+            portstr = "80";
+
+            if (cp) {
+                /* found a possible port token */
+                portstr = (char *)(cp + 1);
+                redir_host_cpy[(int)(portstr - hoststr) - 1] = '\0';
+            }
+
+            host = hoststr;
+            port = atoi(portstr);
+
+            if (port <= 0) {
+                /* invalid port, error this request out */
+                request->error = 1;
+                free(redir_host_cpy);
+                return -1;
+            }
 
             /* set the upstream_err so that downstream_connection_readcb's
              * return from htparser_run will set this downstream to down.
@@ -250,7 +283,7 @@ proxy_parser_headers_complete(htparser * p) {
 
             /* TODO: parse the host:port, we just use 6999 as a test right now */
             bufferevent_socket_connect_hostname(conn, rproxy->dns_base,
-                                                AF_INET, redir_host, 6999);
+                                                AF_INET, host, port);
 
             bufferevent_setcb(conn,
                               redir_readcb,
@@ -266,6 +299,7 @@ proxy_parser_headers_complete(htparser * p) {
             request->downstream_bev = conn;
 
             evbuffer_free(request_buf);
+            free(redir_host_cpy);
 
             /* signal htparser_run to stop executing other callbacks */
             return -1;
