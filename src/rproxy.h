@@ -92,6 +92,7 @@ struct rule_cfg {
     logger_cfg_t  * req_log;     /**< request logging config */
     logger_cfg_t  * err_log;     /**< error logging config */
     bool            passthrough;
+    bool            allow_redirect;
     int             has_up_read_timeout;
     int             has_up_write_timeout;
     struct timeval  up_read_timeout;
@@ -396,6 +397,17 @@ logger_t * logger_init(logger_cfg_t * config, int opts);
 void       logger_log(logger_t * logger, lzlog_level level, char * fmt, ...);
 void       logger_log_request(logger_t * logger, request_t * request);
 void       logger_log_request_error(logger_t * logger, request_t * request, char * fmt, ...);
+
+/***********************************************
+ * Utility functions.
+ **********************************************/
+void      util_dropperms(const char * user, const char * group);
+int       util_daemonize(char * root, int noclose);
+int       util_set_rlimits(int nofiles);
+
+evbuf_t * util_request_to_evbuffer(evhtp_request_t * request);
+int       util_write_header_to_evbuffer(evhtp_header_t * hdr, void * arg);
+
 
 #endif
 

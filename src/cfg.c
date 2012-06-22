@@ -42,7 +42,7 @@ static cfg_opt_t ssl_opts[] = {
 static cfg_opt_t log_opts[] = {
     CFG_BOOL("enabled", cfg_false,                   CFGF_NONE),
     CFG_STR("output",   "file:/dev/stdout",          CFGF_NONE),
-    CFG_STR("level",    "crit",                     CFGF_NONE),
+    CFG_STR("level",    "crit",                      CFGF_NONE),
     CFG_STR("format",   "{SRC} {HOST} {URI} {HOST}", CFGF_NONE),
     CFG_END()
 };
@@ -95,7 +95,8 @@ static cfg_opt_t headers_opts[] = {
     CFG_SEC("headers", headers_opts, CFGF_NONE),                  \
     CFG_INT_LIST("upstream-read-timeout", NULL, CFGF_NODEFAULT),  \
     CFG_INT_LIST("upstream-write-timeout", NULL, CFGF_NODEFAULT), \
-    CFG_BOOL("passthrough", cfg_false, CFGF_NONE)
+    CFG_BOOL("passthrough", cfg_false, CFGF_NONE),                \
+    CFG_BOOL("allow-redirect", cfg_false, CFGF_NONE)
 
 static cfg_opt_t rule_exact_opts[] = {
     CFG_INT("type",       rule_type_exact, CFGF_NONE),
@@ -757,14 +758,15 @@ rule_cfg_parse(cfg_t * cfg) {
 
     assert(cfg != NULL);
 
-    rcfg              = rule_cfg_new();
+    rcfg                 = rule_cfg_new();
     assert(cfg != NULL);
 
-    rcfg->type        = cfg_getint(cfg, "type");
-    rcfg->matchstr    = strdup(cfg_title(cfg));
-    rcfg->lb_method   = lbstr_to_lbtype(cfg_getstr(cfg, "lb-method"));
-    rcfg->headers     = headers_cfg_parse(cfg_getsec(cfg, "headers"));
-    rcfg->passthrough = cfg_getbool(cfg, "passthrough");
+    rcfg->type           = cfg_getint(cfg, "type");
+    rcfg->matchstr       = strdup(cfg_title(cfg));
+    rcfg->lb_method      = lbstr_to_lbtype(cfg_getstr(cfg, "lb-method"));
+    rcfg->headers        = headers_cfg_parse(cfg_getsec(cfg, "headers"));
+    rcfg->passthrough    = cfg_getbool(cfg, "passthrough");
+    rcfg->allow_redirect = cfg_getbool(cfg, "allow-redirect");
 
     if (cfg_getopt(cfg, "upstream-read-timeout")) {
         rcfg->up_read_timeout.tv_sec  = cfg_getnint(cfg, "upstream-read-timeout", 0);
