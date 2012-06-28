@@ -279,6 +279,7 @@ send_upstream_headers(evhtp_request_t * upstream_req, evhtp_headers_t * hdrs, vo
     evbuf_t        * buf;
     rule_cfg_t     * rule_cfg;
     rule_t         * rule;
+    headers_cfg_t  * headers;
     char           * query_args;
 
     request  = arg;
@@ -302,11 +303,22 @@ send_upstream_headers(evhtp_request_t * upstream_req, evhtp_headers_t * hdrs, vo
         return EVHTP_RES_ERROR;
     }
 
+    /* default the x-header configuration to the rule, but if not found,
+     * fallback to the vhost parent's config.
+     */
+    headers = rule->config->headers;
+
+    if (!headers) {
+        headers = rule->parent_vhost->config->headers;
+    }
+
     /* Add X-Headers to the request if applicable */
-    if (append_x_headers(rule->config->headers, upstream_req) < 0) {
-        logger_log_request_error(rule->err_log, request,
-                                 "%s(): append_x_headers < 0", __FUNCTION__);
-        return EVHTP_RES_ERROR;
+    if (headers) {
+        if (append_x_headers(headers, upstream_req) < 0) {
+            logger_log_request_error(rule->err_log, request,
+                                     "%s(): append_x_headers < 0", __FUNCTION__);
+            return EVHTP_RES_ERROR;
+        }
     }
 
     /* checks to determine of the upstream request is set to a
@@ -1230,15 +1242,15 @@ rproxy_init(evbase_t * evbase, rproxy_cfg_t * cfg) {
          */
         evhtp_set_pre_accept_cb(htp, upstream_pre_accept, NULL);
 
-        /* for each vhost, create a child virtual host and stick it in our main
-         * evhtp structure.
-         */
-        lztq_for_each(server->vhosts, add_vhost, htp);
-
         if (server->ssl_cfg) {
             /* enable SSL support on this server */
             evhtp_ssl_init(htp, server->ssl_cfg);
         }
+
+        /* for each vhost, create a child virtual host and stick it in our main
+         * evhtp structure.
+         */
+        lztq_for_each(server->vhosts, add_vhost, htp);
 
         /* if configured, set our upstream connection's read/write timeouts */
         if (server->read_timeout.tv_sec || server->read_timeout.tv_usec) {

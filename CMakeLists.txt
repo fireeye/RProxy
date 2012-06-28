@@ -103,7 +103,7 @@ if (NOT ${CMAKE_BUILD_TYPE} STREQUAL "Debug")
 endif (NOT ${CMAKE_BUILD_TYPE} STREQUAL "Debug")
 
 add_subdirectory(src)
-#add_subdirectory(test)
+add_subdirectory(test)
 
 message("BUILD TYPE:  ${CMAKE_BUILD_TYPE}")
 message("BUILD FLAGS: ${CMAKE_C_FLAGS}")

@@ -59,7 +59,6 @@ redir_eventcb(evbev_t * bev, short events, void * arg) {
         return;
     }
 
-    printf("%s\n", strerror(errno));
     bufferevent_free(request->upstream_bev);
     bufferevent_free(request->downstream_bev);
 
@@ -1294,6 +1293,8 @@ downstream_connection_readcb(evbev_t * bev, void * arg) {
 
     if (REQUEST_HAS_ERROR(request)) {
         /* deal with whatever type of error happened */
+        evhtp_connection_t * c =
+            evhtp_request_get_connection(request->upstream_request);
 
         if (request->upstream_err) {
             /* upstream_error() was triggered, which means the upstream encountered
@@ -1307,6 +1308,8 @@ downstream_connection_readcb(evbev_t * bev, void * arg) {
             if (request->done) {
                 downstream_connection_set_idle(connection);
             } else {
+                /* evhtp_connection_free(c); */
+                evhtp_send_reply(request->upstream_request, 200);
                 downstream_connection_set_down(connection);
             }
         } else if (request->error) {
@@ -1321,6 +1324,8 @@ downstream_connection_readcb(evbev_t * bev, void * arg) {
 
                 evhtp_send_reply_end(request->upstream_request);
             } else {
+                /* evhtp_connection_free(c); */
+                evhtp_send_reply(request->upstream_request, 200);
                 downstream_connection_set_down(connection);
             }
         }

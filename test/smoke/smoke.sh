@@ -35,12 +35,12 @@ export BASE=`pwd`
 export TEMP=`mktemp -d smoke.XXXX`
 
 # See if we have curl
-if [ -f /usr/bin/curl ];
+CURL=`command -v curl`
+
+if [ "$CURL" = "" ]
 then
-   export CURL=/usr/bin/curl
-else
-   echo "curl not found, exiting..."
-   exit 1;
+	echo "curl not found, exiting..."
+	exit 1
 fi
 
 export success=0
@@ -65,6 +65,7 @@ function checkcode {
 function checkresult {
     echo "Checking http code $1 with regex '$2'"
     export data=`cat ${TEMP}/curl.out`
+		echo $data
     if [ $? -eq 0 ] && [ "${code}" = "$1" ] && [[ "${data}" =~ ${2} ]] 
     then
         success=`expr $success + 1`
@@ -84,7 +85,7 @@ sleep 1
 ${BASE}/src/rproxy ${BASE}/test/smoke/smoke_cfg.cfg &
 sleep 1
 
-export RP_HOST=127.0.0.1
+export RP_HOST=localhost
 export RP_PORT_1=8081
 export RP_PORT_2=8082
 export RP_PORT_3=8083

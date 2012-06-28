@@ -5,7 +5,7 @@ set(SMOKE_SOURCES
 )
 
 add_executable(smoke_downstream ${SMOKE_SOURCES})
-target_link_libraries(smoke_downstream ${EXT_LIBS} ${SYS_LIBS})
+target_link_libraries(smoke_downstream ${RPROXY_EXTERNAL_LIBS} ${SYS_LIBS})
 
 set (SMOKE_FILES
 	${PROJECT_SOURCE_DIR}/test/smoke/smoke.sh

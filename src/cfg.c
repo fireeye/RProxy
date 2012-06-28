@@ -92,7 +92,7 @@ static cfg_opt_t headers_opts[] = {
     CFG_STR_LIST("downstreams", NULL, CFGF_NODEFAULT),            \
     CFG_STR("lb-method", "rtt", CFGF_NONE),                       \
     CFG_STR("rewrite", NULL, CFGF_NONE),                          \
-    CFG_SEC("headers", headers_opts, CFGF_NONE),                  \
+    CFG_SEC("headers", headers_opts, CFGF_NODEFAULT),             \
     CFG_INT_LIST("upstream-read-timeout", NULL, CFGF_NODEFAULT),  \
     CFG_INT_LIST("upstream-write-timeout", NULL, CFGF_NODEFAULT), \
     CFG_BOOL("passthrough", cfg_false, CFGF_NONE),                \
@@ -117,12 +117,13 @@ static cfg_opt_t rule_glob_opts[] = {
 };
 
 static cfg_opt_t vhost_opts[] = {
-    CFG_SEC("ssl",           ssl_opts,        CFGF_NONE),
+    CFG_SEC("ssl",           ssl_opts,        CFGF_NODEFAULT),
     CFG_SEC("if-uri-match",  rule_exact_opts, CFGF_TITLE | CFGF_MULTI | CFGF_NO_TITLE_DUPES),
     CFG_SEC("if-uri-rmatch", rule_regex_opts, CFGF_TITLE | CFGF_MULTI | CFGF_NO_TITLE_DUPES),
     CFG_SEC("if-uri-gmatch", rule_glob_opts,  CFGF_TITLE | CFGF_MULTI | CFGF_NO_TITLE_DUPES),
     CFG_STR_LIST("aliases",  NULL,            CFGF_NONE),
     CFG_SEC("logging",       logging_opts,    CFGF_NONE),
+    CFG_SEC("headers",       headers_opts,    CFGF_NODEFAULT),
     CFG_END()
 };
 
@@ -137,7 +138,7 @@ static cfg_opt_t server_opts[] = {
     CFG_INT("backlog",              1024,            CFGF_NONE),
     CFG_SEC("downstream",           downstream_opts, CFGF_MULTI | CFGF_TITLE | CFGF_NO_TITLE_DUPES),
     CFG_SEC("vhost",                vhost_opts,      CFGF_MULTI | CFGF_TITLE | CFGF_NO_TITLE_DUPES),
-    CFG_SEC("ssl",                  ssl_opts,        CFGF_NONE),
+    CFG_SEC("ssl",                  ssl_opts,        CFGF_NODEFAULT),
     CFG_END()
 };
 
@@ -714,7 +715,9 @@ headers_cfg_parse(cfg_t * cfg) {
     int             n_x509_exts;
     int             i;
 
-    assert(cfg != NULL);
+    if (cfg == NULL) {
+	return NULL;
+    }
 
     hcfg = headers_cfg_new();
     assert(hcfg != NULL);
@@ -860,6 +863,7 @@ vhost_cfg_parse(cfg_t * cfg) {
     cfg_t       * log_cfg;
     cfg_t       * req_log_cfg;
     cfg_t       * err_log_cfg;
+    cfg_t       * hdr_cfg;
     int           i;
     int           res;
 
@@ -892,10 +896,15 @@ vhost_cfg_parse(cfg_t * cfg) {
     }
 
     log_cfg = cfg_getsec(cfg, "logging");
+    hdr_cfg = cfg_getsec(cfg, "headers");
 
     if (log_cfg) {
         vcfg->req_log = logger_cfg_parse(cfg_getsec(log_cfg, "request"));
         vcfg->err_log = logger_cfg_parse(cfg_getsec(log_cfg, "error"));
+    }
+
+    if (hdr_cfg) {
+	vcfg->headers = headers_cfg_parse(hdr_cfg);
     }
 
     return vcfg;
