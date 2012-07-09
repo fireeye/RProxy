@@ -51,10 +51,21 @@ append_ssl_x_headers(headers_cfg_t * headers_cfg, evhtp_request_t * upstream_req
         return -1;
     }
 
+    /* remove all headers the client might have sent, if any of these
+     * configurations are set to false, this allows the client to send
+     * their own versions. This is potentially dangerous, so we remove them
+     */
+
+    evhtp_kv_rm_and_free(headers, evhtp_kvs_find_kv(headers, "X-SSL-Subject"));
+    evhtp_kv_rm_and_free(headers, evhtp_kvs_find_kv(headers, "X-SSL-Issuer"));
+    evhtp_kv_rm_and_free(headers, evhtp_kvs_find_kv(headers, "X-SSL-Notbefore"));
+    evhtp_kv_rm_and_free(headers, evhtp_kvs_find_kv(headers, "X-SSL-Notafter"));
+    evhtp_kv_rm_and_free(headers, evhtp_kvs_find_kv(headers, "X-SSL-Serial"));
+    evhtp_kv_rm_and_free(headers, evhtp_kvs_find_kv(headers, "X-SSL-Cipher"));
+    evhtp_kv_rm_and_free(headers, evhtp_kvs_find_kv(headers, "X-SSL-Certificate"));
+
     if (headers_cfg->x_ssl_subject == true) {
         unsigned char * subj_str;
-
-        evhtp_kv_rm_and_free(headers, evhtp_kvs_find_kv(headers, "X-SSL-Subject"));
 
         if ((subj_str = ssl_subject_tostr(ssl))) {
             evhtp_headers_add_header(headers,
@@ -67,8 +78,6 @@ append_ssl_x_headers(headers_cfg_t * headers_cfg, evhtp_request_t * upstream_req
     if (headers_cfg->x_ssl_issuer == true) {
         unsigned char * issr_str;
 
-        evhtp_kv_rm_and_free(headers, evhtp_kvs_find_kv(headers, "X-SSL-Issuer"));
-
         if ((issr_str = ssl_issuer_tostr(ssl))) {
             evhtp_headers_add_header(headers,
                                      evhtp_header_new("X-SSL-Issuer", issr_str, 0, 1));
@@ -79,8 +88,6 @@ append_ssl_x_headers(headers_cfg_t * headers_cfg, evhtp_request_t * upstream_req
 
     if (headers_cfg->x_ssl_notbefore == true) {
         unsigned char * nbf_str;
-
-        evhtp_kv_rm_and_free(headers, evhtp_kvs_find_kv(headers, "X-SSL-Notbefore"));
 
         if ((nbf_str = ssl_notbefore_tostr(ssl))) {
             evhtp_headers_add_header(headers,
@@ -93,8 +100,6 @@ append_ssl_x_headers(headers_cfg_t * headers_cfg, evhtp_request_t * upstream_req
     if (headers_cfg->x_ssl_notafter == true) {
         unsigned char * naf_str;
 
-        evhtp_kv_rm_and_free(headers, evhtp_kvs_find_kv(headers, "X-SSL-Notafter"));
-
         if ((naf_str = ssl_notafter_tostr(ssl))) {
             evhtp_headers_add_header(headers,
                                      evhtp_header_new("X-SSL-Notafter", naf_str, 0, 1));
@@ -105,8 +110,6 @@ append_ssl_x_headers(headers_cfg_t * headers_cfg, evhtp_request_t * upstream_req
 
     if (headers_cfg->x_ssl_serial == true) {
         unsigned char * ser_str;
-
-        evhtp_kv_rm_and_free(headers, evhtp_kvs_find_kv(headers, "X-SSL-Serial"));
 
         if ((ser_str = ssl_serial_tostr(ssl))) {
             evhtp_headers_add_header(headers,
@@ -119,8 +122,6 @@ append_ssl_x_headers(headers_cfg_t * headers_cfg, evhtp_request_t * upstream_req
     if (headers_cfg->x_ssl_cipher == true) {
         unsigned char * cip_str;
 
-        evhtp_kv_rm_and_free(headers, evhtp_kvs_find_kv(headers, "X-SSL-Cipher"));
-
         if ((cip_str = ssl_cipher_tostr(ssl))) {
             evhtp_headers_add_header(headers,
                                      evhtp_header_new("X-SSL-Cipher", cip_str, 0, 1));
@@ -131,8 +132,6 @@ append_ssl_x_headers(headers_cfg_t * headers_cfg, evhtp_request_t * upstream_req
 
     if (headers_cfg->x_ssl_certificate == true) {
         unsigned char * cert_str;
-
-        evhtp_kv_rm_and_free(headers, evhtp_kvs_find_kv(headers, "X-SSL-Certificate"));
 
         if ((cert_str = ssl_cert_tostr(ssl))) {
             evhtp_headers_add_header(headers,
