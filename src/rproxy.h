@@ -150,7 +150,7 @@ struct vhost_cfg {
     lztq            * aliases;
     logger_cfg_t    * req_log;      /* request logging configuration */
     logger_cfg_t    * err_log;      /* error logging configuration */
-    headers_cfg_t * headers;     /**< headers which are added to the backend request */
+    headers_cfg_t   * headers;      /**< headers which are added to the backend request */
 };
 
 /**
@@ -179,6 +179,7 @@ struct server_cfg {
  */
 struct rproxy_cfg {
     bool           daemonize;       /**< should proxy run in background */
+    int            mem_trimsz;
     int            max_nofile;      /**< max number of open file descriptors */
     char         * rootdir;         /**< root dir to daemonize */
     char         * user;            /**< user to run as */
