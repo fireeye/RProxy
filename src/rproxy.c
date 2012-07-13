@@ -59,7 +59,7 @@ append_ssl_x_headers(rproxy_t * rproxy, evhtp_request_t * upstream_req) {
         return 0;
     }
 
-    if (!(headers = upstream_req->headers_in)) {
+    if (!(headers = upstream_req->headers_out)) {
         return -1;
     }
 
@@ -185,7 +185,7 @@ append_x_headers(rproxy_t * rproxy, evhtp_request_t * upstream_req) {
         return -1;
     }
 
-    if (!(headers = upstream_req->headers_in)) {
+    if (!(headers = upstream_req->headers_out)) {
         return -1;
     }
 
