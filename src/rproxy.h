@@ -420,6 +420,7 @@ unsigned char * ssl_x509_ext_tostr(evhtp_ssl_t *, const char *);
 logger_t * logger_init(logger_cfg_t *);
 void       logger_log_request(logger_t *, request_t *);
 void       logger_log_errorf(logger_t *, char * fmt, ...);
+void       logger_log_request_errorf(logger_t * logger, request_t * request, char * fmt, ...);
 
 #define logger_log_error(logger, fmt, ...)                  do {                                    \
         time_t t = time(NULL);                                                                      \
