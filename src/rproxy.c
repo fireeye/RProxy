@@ -401,6 +401,8 @@ send_upstream_headers(evhtp_request_t * upstream_req, evhtp_headers_t * hdrs, vo
                           passthrough_writecb,
                           passthrough_eventcb, request);
 
+        request->upstream_request = NULL;
+
         return EVHTP_RES_USER;
     }
 
