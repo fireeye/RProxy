@@ -1173,6 +1173,11 @@ downstream_connection_eventcb(evbev_t * bev, short events, void * arg) {
              * double connection_set_down() call. This should be dealt with
              * differently to reduce overhead.
              */
+        } else if (request->upstream_bev) {
+            bufferevent_free(request->upstream_bev);
+            request_free(request);
+
+            connection->request = NULL;
         }
     }
 

@@ -266,11 +266,11 @@ struct vhost {
 struct request {
     rproxy_t        * rproxy;            /**< the parent rproxy_t structure */
     evhtp_request_t * upstream_request;  /**< the client request */
+    evbev_t         * upstream_bev;
     downstream_c_t  * downstream_conn;   /**< the downstream connection */
     rule_t          * rule;              /**< the matched rule */
     htparser        * parser;            /**< htparser for responses from the downstream */
     event_t         * pending_ev;        /**< event timer for pending status */
-    evbev_t         * upstream_bev;
     evbev_t         * downstream_bev;
 
     uint8_t error;                       /**< set of downstream returns some type of error */
