@@ -1187,8 +1187,7 @@ downstream_connection_eventcb(evbev_t * bev, short events, void * arg) {
      */
 
     if (connection && connection->status != downstream_status_down) {
-        lzlog_write(rproxy->log->log, lzlog_crit,
-                   "downstream %s socket event (source port=%d) error %d (errno=%s) [ %s%s%s%s%s%s]",
+        printf("downstream %s socket event (source port=%d) error %d (errno=%s) [ %s%s%s%s%s%s]",
                    connection->parent->config->name,
                    connection->sport, events, strerror(errno),
                    (events & BEV_EVENT_READING) ? "READING " : "",
