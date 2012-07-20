@@ -379,9 +379,6 @@ send_upstream_headers(evhtp_request_t * upstream_req, evhtp_headers_t * hdrs, vo
             return EVHTP_RES_ERROR;
     } /* switch */
 
-    buf = util_request_to_evbuffer(upstream_req);
-    assert(buf != NULL);
-
     if (rule_cfg->passthrough == true) {
         /* rule configured to be passthrough, so we take ownership of the
          * bufferevent and ignore any state based processing of the request.
@@ -403,6 +400,9 @@ send_upstream_headers(evhtp_request_t * upstream_req, evhtp_headers_t * hdrs, vo
 
         return EVHTP_RES_USER;
     }
+
+    buf = util_request_to_evbuffer(upstream_req);
+    assert(buf != NULL);
 
     bufferevent_write_buffer(request->downstream_bev, buf);
     evbuffer_free(buf);
