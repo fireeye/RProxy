@@ -401,7 +401,7 @@ send_upstream_headers(evhtp_request_t * upstream_req, evhtp_headers_t * hdrs, vo
 
         request->upstream_request = NULL;
 
-        res = EVHTP_RES_USER;
+        return EVHTP_RES_USER;
     }
 
     bufferevent_write_buffer(request->downstream_bev, buf);
