@@ -280,6 +280,7 @@ send_upstream_headers(evhtp_request_t * upstream_req, evhtp_headers_t * hdrs, vo
     rule_t         * rule;
     headers_cfg_t  * headers;
     char           * query_args;
+    evhtp_res        res = EVHTP_RES_OK;
 
     request  = arg;
     assert(request != NULL);
@@ -381,9 +382,6 @@ send_upstream_headers(evhtp_request_t * upstream_req, evhtp_headers_t * hdrs, vo
     buf = util_request_to_evbuffer(upstream_req);
     assert(buf != NULL);
 
-    bufferevent_write_buffer(request->downstream_bev, buf);
-    evbuffer_free(buf);
-
     if (rule_cfg->passthrough == true) {
         /* rule configured to be passthrough, so we take ownership of the
          * bufferevent and ignore any state based processing of the request.
@@ -403,11 +401,13 @@ send_upstream_headers(evhtp_request_t * upstream_req, evhtp_headers_t * hdrs, vo
 
         request->upstream_request = NULL;
 
-        return EVHTP_RES_USER;
+        res = EVHTP_RES_USER;
     }
 
+    bufferevent_write_buffer(request->downstream_bev, buf);
+    evbuffer_free(buf);
 
-    return EVHTP_RES_OK;
+    return res;
 } /* send_upstream_headers */
 
 evhtp_res
@@ -867,6 +867,9 @@ downstream_pending_timeout(evutil_socket_t fd, short what, void * arg) {
 
     evhtp_headers_add_header(up_req->headers_out, evhtp_header_new("Connection", "close", 0, 0));
     evhtp_send_reply(up_req, 503);
+
+    logger_log(rproxy->log, lzlog_notice,
+               "%s(): pending timeout hit for upstream client", __FUNCTION__);
 }
 
 /**
@@ -1042,14 +1045,19 @@ rproxy_thread_init(evhtp_t * htp, evthr_t * thr, void * arg) {
     assert(htp != NULL);
     assert(thr != NULL);
 
-    server_cfg          = arg;
+    server_cfg = arg;
     assert(server_cfg != NULL);
 
-    evbase              = evthr_get_base(thr);
+    evbase     = evthr_get_base(thr);
     assert(evbase != NULL);
 
-    rproxy              = calloc(sizeof(rproxy_t), 1);
+    rproxy     = calloc(sizeof(rproxy_t), 1);
     assert(rproxy != NULL);
+
+    if (server_cfg->log_cfg) {
+        rproxy->log = logger_init(server_cfg->log_cfg, 0);
+        assert(rproxy->log != NULL);
+    }
 
     rproxy->downstreams = lztq_new();
     assert(rproxy->downstreams != NULL);

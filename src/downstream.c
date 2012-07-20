@@ -976,6 +976,7 @@ downstream_connection_get_rr(rule_t * rule) {
 
     if (!last_used_elem) {
         downstream_elem = lztq_first(rule->downstreams);
+        last_used_elem  = lztq_last(rule->downstreams);
     } else {
         downstream_elem = lztq_next(last_used_elem);
     }
@@ -1186,9 +1187,10 @@ downstream_connection_eventcb(evbev_t * bev, short events, void * arg) {
      */
 
     if (connection && connection->status != downstream_status_down) {
-        logger_log(rproxy->log, lzlog_crit,
-                   "[CRIT] downstream socket event (source port=%d) error %d [ %s%s%s%s%s%s]",
-                   connection->sport, events,
+        lzlog_write(rproxy->log->log, lzlog_crit,
+                   "downstream %s socket event (source port=%d) error %d (errno=%s) [ %s%s%s%s%s%s]",
+                   connection->parent->config->name,
+                   connection->sport, events, strerror(errno),
                    (events & BEV_EVENT_READING) ? "READING " : "",
                    (events & BEV_EVENT_WRITING) ? "WRITING " : "",
                    (events & BEV_EVENT_EOF)     ? "EOF " : "",

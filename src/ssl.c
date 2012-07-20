@@ -450,16 +450,14 @@ ssl_x509_verifyfn(int ok, X509_STORE_CTX * store) {
     }
 
     if (!ok) {
-#if 0
         rproxy_t * rproxy;
 
         rproxy = evthr_get_aux(connection->thread);
         assert(rproxy != NULL);
 
-        logger_log_error(rproxy->logger,
-                         "[WARN] SSL: verify error:num=%d:%s:depth=%d:%s\n", err,
-                         X509_verify_cert_error_string(err), depth, buf);
-#endif
+        lzlog_write(rproxy->log->log, lzlog_warn,
+                    "[WARN] SSL: verify error:num=%d:%s:depth=%d:%s\n", err,
+                    X509_verify_cert_error_string(err), depth, buf);
     }
 
     return ok;

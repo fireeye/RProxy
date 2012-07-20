@@ -122,7 +122,7 @@ static cfg_opt_t vhost_opts[] = {
     CFG_SEC("if-uri-rmatch", rule_regex_opts, CFGF_TITLE | CFGF_MULTI | CFGF_NO_TITLE_DUPES),
     CFG_SEC("if-uri-gmatch", rule_glob_opts,  CFGF_TITLE | CFGF_MULTI | CFGF_NO_TITLE_DUPES),
     CFG_STR_LIST("aliases",  NULL,            CFGF_NONE),
-    CFG_SEC("logging",       logging_opts,    CFGF_NONE),
+    CFG_SEC("logging",       logging_opts,    CFGF_NODEFAULT),
     CFG_SEC("headers",       headers_opts,    CFGF_NODEFAULT),
     CFG_END()
 };
@@ -139,6 +139,7 @@ static cfg_opt_t server_opts[] = {
     CFG_SEC("downstream",           downstream_opts, CFGF_MULTI | CFGF_TITLE | CFGF_NO_TITLE_DUPES),
     CFG_SEC("vhost",                vhost_opts,      CFGF_MULTI | CFGF_TITLE | CFGF_NO_TITLE_DUPES),
     CFG_SEC("ssl",                  ssl_opts,        CFGF_NODEFAULT),
+    CFG_SEC("logging",              logging_opts,    CFGF_NODEFAULT),
     CFG_END()
 };
 
@@ -716,7 +717,7 @@ headers_cfg_parse(cfg_t * cfg) {
     int             i;
 
     if (cfg == NULL) {
-	return NULL;
+        return NULL;
     }
 
     hcfg = headers_cfg_new();
@@ -904,7 +905,7 @@ vhost_cfg_parse(cfg_t * cfg) {
     }
 
     if (hdr_cfg) {
-	vcfg->headers = headers_cfg_parse(hdr_cfg);
+        vcfg->headers = headers_cfg_parse(hdr_cfg);
     }
 
     return vcfg;
@@ -920,6 +921,7 @@ vhost_cfg_parse(cfg_t * cfg) {
 server_cfg_t *
 server_cfg_parse(cfg_t * cfg) {
     server_cfg_t * scfg;
+    cfg_t        * log_cfg;
     int            i;
     int            res;
 
@@ -940,6 +942,10 @@ server_cfg_parse(cfg_t * cfg) {
     scfg->write_timeout.tv_usec   = cfg_getnint(cfg, "write-timeout", 1);
     scfg->pending_timeout.tv_sec  = cfg_getnint(cfg, "pending-timeout", 0);
     scfg->pending_timeout.tv_usec = cfg_getnint(cfg, "pending-timeout", 1);
+
+    if ((log_cfg = cfg_getsec(cfg, "logging"))) {
+        scfg->log_cfg = logger_cfg_parse(cfg_getsec(log_cfg, "error")); //logger_cfg_parse(cfg_getsec(log_cfg, "error"));
+    }
 
     /* parse and insert all the configured downstreams */
     for (i = 0; i < cfg_size(cfg, "downstream"); i++) {

@@ -123,7 +123,6 @@ struct headers_cfg {
     lztq * x509_exts;
 };
 
-
 /**
  * @brief configuration for a single downstream.
  */
@@ -171,6 +170,7 @@ struct server_cfg {
     evhtp_ssl_cfg_t * ssl_cfg;      /**< if enabled, the ssl configuration */
     lztq            * downstreams;  /**< list of downstream_cfg_t's */
     lztq            * vhosts;       /**< list of vhost_cfg_t's */
+    logger_cfg_t    * log_cfg;      /**< generic server-specific logging */
 };
 
 
@@ -335,8 +335,8 @@ struct rproxy {
     struct evdns_base * dns_base;
     event_t           * request_ev;
     server_cfg_t      * server_cfg;
+    logger_t          * log;         /* server specific error logging */
     lztq              * rules;
-    logger_t          * log;         /**< general log */
     lztq              * downstreams; /**< list of all downstream_t's */
     int                 n_pending;   /**< number of pending requests */
     pending_request_q_t pending;     /**< list of pending upstream request_t's */
