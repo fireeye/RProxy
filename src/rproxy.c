@@ -385,6 +385,7 @@ send_upstream_headers(evhtp_request_t * upstream_req, evhtp_headers_t * hdrs, vo
     bufferevent_write_buffer(request->downstream_bev, buf);
     evbuffer_free(buf);
 
+    /* TODO: if the upstream's input bev still has data, write it here... */
     if (rule_cfg->passthrough == true) {
         /* rule configured to be passthrough, so we take ownership of the
          * bufferevent and ignore any state based processing of the request.
@@ -395,6 +396,8 @@ send_upstream_headers(evhtp_request_t * upstream_req, evhtp_headers_t * hdrs, vo
 
         bev = evhtp_connection_take_ownership(evhtp_request_get_connection(upstream_req));
         assert(bev != NULL);
+
+	evbuffer_drain(bufferevent_get_input(bev), 1);
 
         bufferevent_enable(bev, EV_READ | EV_WRITE);
         bufferevent_setcb(bev,
