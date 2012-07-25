@@ -385,7 +385,7 @@ logger_init(logger_cfg_t * c, int opts) {
 
     switch (c->type) {
         case logger_type_file:
-            logger->log = lzlog_file_new(c->path, "RProxy", opts | LZLOG_OPT_WLEVEL);
+            logger->log = lzlog_file_new(c->path, "RProxy", opts | LZLOG_OPT_NEWLINE);
             break;
         case logger_type_syslog:
             logger->log = lzlog_syslog_new("RProxy", opts, c->facility);

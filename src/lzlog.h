@@ -29,7 +29,8 @@
 #define LZLOG_OPT_WLEVEL       (1 << 2)
 #define LZLOG_OPT_WPID         (1 << 3)
 #define LZLOG_OPT_WNAME        (1 << 4)
-#define LZLOG_OPT_EMU_SYSLZLOG (LZLOG_OPT_WDATE | LZLOG_OPT_WNAME | LZLOG_OPT_WPID)
+#define LZLOG_OPT_NEWLINE      (1 << 5)
+#define LZLOG_OPT_EMU_SYSLZLOG (LZLOG_OPT_WDATE | LZLOG_OPT_WNAME | LZLOG_OPT_WPID | LZLOG_OPT_NEWLINE)
 
 struct lzlog;
 struct lzlog_vtbl;

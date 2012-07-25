@@ -209,7 +209,10 @@ _reformat(lzlog * log, const char * fmt, lzlog_level level) {
     }
 
     strncat(buf, fmt, len);
-    strncat(buf, "\n", len);
+
+    if (log->opts & LZLOG_OPT_NEWLINE) {
+        strncat(buf, "\n", len);
+    }
 
     return buf;
 } /* _reformat */
@@ -298,6 +301,7 @@ _file_print(lzlog * log, lzlog_level level, const char * fmt, va_list ap) {
     pthread_mutex_lock(&log->mutex);
     {
         vfprintf(this->file, nfmt ? nfmt : fmt, ap);
+        fflush(this->file);
     }
     pthread_mutex_unlock(&log->mutex);
 

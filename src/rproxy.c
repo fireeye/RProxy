@@ -397,7 +397,10 @@ send_upstream_headers(evhtp_request_t * upstream_req, evhtp_headers_t * hdrs, vo
         bev = evhtp_connection_take_ownership(evhtp_request_get_connection(upstream_req));
         assert(bev != NULL);
 
-	evbuffer_drain(bufferevent_get_input(bev), 1);
+        /* our on_headers_complete hook will call this function before the last
+         * \n in the \r\n\r\n part, so we have to remove this.
+         */
+        evbuffer_drain(bufferevent_get_input(bev), 1);
 
         bufferevent_enable(bev, EV_READ | EV_WRITE);
         bufferevent_setcb(bev,
