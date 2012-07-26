@@ -641,7 +641,7 @@ upstream_error(evhtp_request_t * upstream_req, short events, void * arg) {
 
     evhtp_unset_all_hooks(&upstream_req->hooks);
 
-    logger_log(rproxy->log, lzlog_warn, "%s(): client aborted, err = %x",
+    logger_log(rule->err_log, lzlog_warn, "%s(): client aborted, err = %x",
                __FUNCTION__, events);
 
     if (request->pending) {
@@ -876,8 +876,10 @@ downstream_pending_timeout(evutil_socket_t fd, short what, void * arg) {
     evhtp_headers_add_header(up_req->headers_out, evhtp_header_new("Connection", "close", 0, 0));
     evhtp_send_reply(up_req, 503);
 
-    logger_log(rproxy->log, lzlog_notice,
-               "%s(): pending timeout hit for upstream client", __FUNCTION__);
+    if (ds_req->rule) {
+        logger_log(ds_req->rule->err_log, lzlog_notice,
+                   "%s(): pending timeout hit for upstream client", __FUNCTION__);
+    }
 }
 
 /**
