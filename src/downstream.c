@@ -26,6 +26,46 @@
 
 #include "rproxy.h"
 
+void
+redir_readcb(evbev_t * bev, void * arg) {
+    /* data was read from the redir downstream, so we must send this data to the
+     * upstream bufferevent.
+     */
+    request_t * request;
+
+    request = arg;
+    assert(request != NULL);
+
+    bufferevent_write_buffer(request->upstream_bev, bufferevent_get_input(bev));
+}
+
+void
+redir_writecb(evbev_t * bev, void * arg) {
+    return;
+}
+
+void
+redir_eventcb(evbev_t * bev, short events, void * arg) {
+    request_t * request;
+
+    request = arg;
+    assert(request != NULL);
+
+    if ((events & BEV_EVENT_CONNECTED)) {
+        /* we have successfully established a connection to the redir host, so
+         * we can re-enable the read side of the upstream bufferevent.
+         */
+        bufferevent_enable(request->upstream_bev, EV_READ | EV_WRITE);
+        return;
+    }
+
+    bufferevent_free(request->upstream_bev);
+    bufferevent_free(request->downstream_bev);
+
+    request_free(request);
+    return;
+}
+
 /*****************************************
  * Downstream response parsing functions
  ****************************************/
@@ -60,15 +100,11 @@ proxy_parser_header_key(htparser * p, const char * data, size_t len) {
     }
 
     if (!(upstream_r = request->upstream_request)) {
-        logger_log_request_error(rproxy->logger, request,
-                                 "[ERROR] upstream_request == NULL");
         request->error = 1;
         return -1;
     }
 
     if (!(key_s = malloc(len + 1))) {
-        logger_log_request_error(request->rproxy->logger, request,
-                                 "[CRIT] Could not malloc: %s", strerror(errno));
         exit(EXIT_FAILURE);
     }
 
@@ -79,7 +115,7 @@ proxy_parser_header_key(htparser * p, const char * data, size_t len) {
     hdr->k_heaped = 1;
 
     return 0;
-}
+} /* proxy_parser_header_key */
 
 /**
  * @brief parse a header value from a downstream response.
@@ -111,15 +147,11 @@ proxy_parser_header_val(htparser * p, const char * data, size_t len) {
     }
 
     if (!(upstream_r = request->upstream_request)) {
-        logger_log_request_error(rproxy->logger, request,
-                                 "[ERROR] header_val upstream_r == NULL");
         request->error = 1;
         return -1;
     }
 
     if (!(val_s = calloc(len + 1, 1))) {
-        logger_log_request_error(request->rproxy->logger, request,
-                                 "[CRIT] Could not malloc: %s", strerror(errno));
         exit(EXIT_FAILURE);
     }
 
@@ -164,10 +196,113 @@ proxy_parser_headers_complete(htparser * p) {
     }
 
     if (!(upstream_r = request->upstream_request)) {
-        logger_log_request_error(rproxy->logger, request,
-                                 "[ERROR] parser_headers_complete() upstream_r == NULL");
         request->error = 1;
         return -1;
+    }
+
+    if (htparser_get_status(p) == 377 && request->rule->config->allow_redirect == true) {
+        /* check for a X-Internal-Redirect header, and if found, we make a new
+         * connection to the value of this and send the request that way.
+         */
+        const char * redir_host;
+
+        if ((redir_host = evhtp_header_find(upstream_r->headers_out,
+                                            "x-internal-redirect"))) {
+            evbev_t * conn;
+            evbev_t * upstream_bev;
+            evbuf_t * request_buf;
+            char    * redir_host_cpy;
+            char    * hoststr;
+            char    * portstr;
+            char    * host;
+            char    * cp;
+            uint16_t  port;
+
+            redir_host_cpy = strdup(redir_host);
+            assert(redir_host_cpy != NULL);
+
+            /* parse the hostname:port value into host and port, if no port
+             * token is found, it defaults to 80
+             */
+            cp      = strchr(redir_host_cpy, ':');
+
+            hoststr = redir_host_cpy;
+            portstr = "80";
+
+            if (cp) {
+                /* found a possible port token */
+                portstr = (char *)(cp + 1);
+                redir_host_cpy[(int)(portstr - hoststr) - 1] = '\0';
+            }
+
+            host = hoststr;
+            port = atoi(portstr);
+
+            if (port <= 0) {
+                /* invalid port, error this request out */
+                request->error = 1;
+                free(redir_host_cpy);
+                return -1;
+            }
+
+            /* set the upstream_err so that downstream_connection_readcb's
+             * return from htparser_run will set this downstream to down.
+             *
+             * TODO: fully process the response so that we don't have
+             *      to set the downstream as down.
+             */
+            request->upstream_err = 1;
+
+            /* we need to set the downstream_connection's request pointer to
+             * NULL so that downstream_connection_readcb does not call
+             * request_free() on this request_t.
+             */
+            request->downstream_conn->request = NULL;
+
+            /* generate the request which will be sent to the redir host once it
+             * establishes.
+             */
+            request_buf  = util_request_to_evbuffer(upstream_r);
+            assert(request_buf != NULL);
+
+            /* take ownership of the evhtp request bufferevent since this
+             * connection will now act as if it is a passthrough socket.
+             */
+            upstream_bev = evhtp_connection_take_ownership(evhtp_request_get_connection(upstream_r));
+            assert(upstream_bev != NULL);
+
+            /* do not enable read side of the bufferevent yet, we do this once
+             * the connection has been established to the redir host.
+             */
+            bufferevent_disable(upstream_bev, EV_READ);
+
+            conn = bufferevent_socket_new(rproxy->evbase, -1,
+                                          BEV_OPT_CLOSE_ON_FREE);
+            assert(conn != NULL);
+
+            /* TODO: parse the host:port, we just use 6999 as a test right now */
+            bufferevent_socket_connect_hostname(conn, rproxy->dns_base,
+                                                AF_INET, host, port);
+
+            bufferevent_setcb(conn,
+                              redir_readcb,
+                              redir_writecb,
+                              redir_eventcb, request);
+            bufferevent_enable(conn, EV_READ | EV_WRITE);
+
+            /* send the initial request to the downstream which will be written
+             * once the connection has been established.
+             */
+            bufferevent_write_buffer(conn, request_buf);
+
+            request->downstream_bev = conn;
+
+            evbuffer_free(request_buf);
+            free(redir_host_cpy);
+
+            /* signal htparser_run to stop executing other callbacks */
+            return -1;
+        }
     }
 
     /* downstream headers have been fully parsed, start streaming
@@ -202,7 +337,7 @@ proxy_parser_headers_complete(htparser * p) {
  *
  * @return 0 on success, -1 on error.
  */
-static int
+int
 proxy_parser_new_chunk(htparser * p) {
     request_t       * request;
     rproxy_t        * rproxy;
@@ -220,15 +355,11 @@ proxy_parser_new_chunk(htparser * p) {
     }
 
     if (!(upstream_r = request->upstream_request)) {
-        logger_log_request_error(rproxy->logger, request,
-                                 "[ERROR] parser_new_chunk() upstream_r == NULL");
         request->error = 1;
         return -1;
     }
 
     if (!(buf = evbuffer_new())) {
-        logger_log_request_error(request->rproxy->logger, request,
-                                 "[CRIT] Could not malloc: %s", strerror(errno));
         exit(EXIT_FAILURE);
     }
 
@@ -259,7 +390,7 @@ proxy_parser_new_chunk(htparser * p) {
  *
  * @return 0 on success, -1 on error.
  */
-static int
+int
 proxy_parser_chunk_complete(htparser * p) {
     /* an entire chunk has been parsed, send the final CRLF to the upstream */
     request_t       * request;
@@ -280,15 +411,11 @@ proxy_parser_chunk_complete(htparser * p) {
     }
 
     if (!(upstream_r = request->upstream_request)) {
-        logger_log_request_error(rproxy->logger, request,
-                                 "[ERROR] parser_chunk_complete() upstream_r == NULL");
         request->error = 1;
         return -1;
     }
 
     if (!(buf = evbuffer_new())) {
-        logger_log_request_error(request->rproxy->logger, request,
-                                 "[CRIT] Could not malloc: %s", strerror(errno));
         exit(EXIT_FAILURE);
     }
 
@@ -314,7 +441,7 @@ proxy_parser_chunk_complete(htparser * p) {
  *
  * @return 0 on success, -1 on error.
  */
-static int
+int
 proxy_parser_chunks_complete(htparser * p) {
     /* all chunks have been parsed, send the terminating 0 and CRLF */
     request_t       * request;
@@ -333,15 +460,11 @@ proxy_parser_chunks_complete(htparser * p) {
     }
 
     if (!(upstream_r = request->upstream_request)) {
-        logger_log_request_error(rproxy->logger, request,
-                                 "[ERROR] chunks_complete() upstream_r == NULL");
         request->error = 1;
         return -1;
     }
 
     if (!(buf = evbuffer_new())) {
-        logger_log_error(request->rproxy->logger,
-                         "[CRIT] Could not malloc: %s", strerror(errno));
         exit(EXIT_FAILURE);
     }
 
@@ -354,7 +477,7 @@ proxy_parser_chunks_complete(htparser * p) {
     }
 
     return 0;
-}
+} /* proxy_parser_chunks_complete */
 
 /**
  * @brief called when a non-chunked downstream response body is parsed
@@ -368,7 +491,7 @@ proxy_parser_chunks_complete(htparser * p) {
  *
  * @return
  */
-static int
+int
 proxy_parser_body(htparser * p, const char * data, size_t len) {
     /* stream parsed body data from the downstream to the upstream */
     request_t       * request;
@@ -389,15 +512,11 @@ proxy_parser_body(htparser * p, const char * data, size_t len) {
     }
 
     if (!(upstream_r = request->upstream_request)) {
-        logger_log_request_error(rproxy->logger, request,
-                                 "[ERROR] parser_body() upstream_r == NULL");
         request->error = 1;
         return -1;
     }
 
     if (!(buf = evbuffer_new())) {
-        logger_log_request_error(request->rproxy->logger, request,
-                                 "[CRIT] Could not malloc: %s", strerror(errno));
         exit(EXIT_FAILURE);
     }
 
@@ -431,8 +550,6 @@ proxy_parser_fini(htparser * p) {
     }
 
     if (!(upstream_r = request->upstream_request)) {
-        logger_log_request_error(rproxy->logger, request,
-                                 "[ERROR] proxy_parser_fini() upstream_r == NULL");
         request->error = 1;
         return -1;
     }
@@ -499,9 +616,12 @@ downstream_connection_set_idle(downstream_c_t * connection) {
             downstream->num_idle   -= 1;
             break;
         case downstream_status_down:
-            logger_log_error(downstream->rproxy->logger,
-                             "[INFO] Downstream %s:%d is now up",
-                             downstream->config->host, downstream->config->port);
+            logger_log(downstream->rproxy->log, lzlog_info,
+                       "%s() downstream %s:%d is now UP",
+                       __FUNCTION__,
+                       downstream->config->host,
+                       downstream->config->port);
+
             downstream->num_down -= 1;
 
             TAILQ_REMOVE(&downstream->down, connection, next);
@@ -558,11 +678,12 @@ downstream_connection_set_down(downstream_c_t * connection) {
     }
 
     if (connection->status != downstream_status_down) {
-        logger_log_error(downstream->rproxy->logger,
-                         "[ERROR] Downstream proxy:%d -> %s:%d is down",
-                         connection->sport,
-                         downstream->config->host,
-                         downstream->config->port);
+        logger_log(downstream->rproxy->log, lzlog_err,
+                   "%s(): downstream proxy:%d -> %s:%d is down",
+                   __FUNCTION__,
+                   connection->sport,
+                   downstream->config->host,
+                   downstream->config->port);
     }
 
     switch (connection->status) {
@@ -668,43 +789,85 @@ downstream_connection_set_active(downstream_c_t * connection) {
 } /* downstream_connection_set_active */
 
 /**
+ * @brief search through a list of downstream_t's and attempt to find one that
+ *        has a name that matches the string.
+ *
+ * @param downstreams
+ * @param name
+ *
+ * @return
+ */
+downstream_t *
+downstream_find_by_name(lztq * downstreams, const char * name) {
+    lztq_elem * ds_elem;
+    lztq_elem * ds_temp;
+
+    if (!downstreams || !name) {
+        return NULL;
+    }
+
+    for (ds_elem = lztq_first(downstreams); ds_elem != NULL; ds_elem = ds_temp) {
+        downstream_t * ds;
+
+        ds = lztq_elem_data(ds_elem);
+        assert(ds != NULL);
+
+        if (!strcmp(ds->config->name, name)) {
+            return ds;
+        }
+
+        ds_temp = lztq_next(ds_elem);
+    }
+
+    return NULL;
+}
+
+/**
  * @brief attempts to find an idle downstream connection with the most idle connections.
  *
- * @param rproxy
+ * @param rule
  *
  * @return a downstream connection, otherwise NULL if no downstreams are avail.
  */
 downstream_c_t *
-downstream_connection_get_most_idle(rproxy_t * rproxy) {
+downstream_connection_get_most_idle(rule_t * rule) {
     downstream_t * downstream;
     downstream_t * most_idle;
+    lztq_elem    * ds_elem;
+    lztq_elem    * ds_elem_save;
+
+    assert(rule != NULL);
+    assert(rule->downstreams != NULL);
 
     most_idle = NULL;
 
-    /* iterate over each downstream_t, check the num_idle variable on each one
-     * until the largest number is found
-     */
-    TAILQ_FOREACH(downstream, &rproxy->downstreams, next) {
-        if (most_idle == NULL) {
-            most_idle = downstream;
+    for (ds_elem = lztq_first(rule->downstreams); ds_elem; ds_elem = ds_elem_save) {
+        downstream_t * ds;
+
+        ds_elem_save = lztq_next(ds_elem);
+
+        ds           = lztq_elem_data(ds_elem);
+        assert(ds != NULL);
+
+        if (!most_idle) {
+            most_idle = ds;
             continue;
         }
 
         /* check to see if the number of idle connections in the current
-         * downstream is higher than the saved downstream
+         * downstream is higher than the saved downstream.
          */
-        if (downstream->num_idle > most_idle->num_idle) {
-            /* this downstream has more idle connections, swap over most_idle to
-             * use it
+        if (ds->num_idle > most_idle->num_idle) {
+            /* this downstream has more idle connections, swap it over to
+             * most_idle to use it.
              */
-            most_idle = downstream;
+            most_idle = ds;
         }
     }
 
     if (most_idle) {
         assert(TAILQ_FIRST(&most_idle->idle) != NULL);
 
-        /* return the first downstream connection in the downstream parent */
         return TAILQ_FIRST(&most_idle->idle);
     }
 
@@ -715,26 +878,32 @@ downstream_connection_get_most_idle(rproxy_t * rproxy) {
 /**
  * @brief Attempts to find an idle downstream connection with the lowest RTT.
  *
- * @param rproxy
+ * @param rule
  *
  * @return a downstream connection on success, NULL if no downstreams are
  *         available.
  */
 downstream_c_t *
-downstream_connection_get_lowest_rtt(rproxy_t * rproxy) {
+downstream_connection_get_lowest_rtt(rule_t * rule) {
+    lztq_elem      * ds_elem;
+    lztq_elem      * ds_elem_save;
     downstream_c_t * conn;
     downstream_c_t * save;
-    downstream_t   * downstream;
 
-    /* iterate through each downstream and their idle connection
-     * children and return the connection with the lowest RTT
-     */
+    assert(rule != NULL);
+    assert(rule->downstreams != NULL);
 
-    save = NULL;
+    save = conn = NULL;
 
-    TAILQ_FOREACH(downstream, &rproxy->downstreams, next) {
+    for (ds_elem = lztq_first(rule->downstreams); ds_elem; ds_elem = ds_elem_save) {
+        downstream_t * downstream;
+
+        ds_elem_save = lztq_next(ds_elem);
+        downstream   = lztq_elem_data(ds_elem);
+        assert(downstream != NULL);
+
         TAILQ_FOREACH(conn, &downstream->idle, next) {
-            if (save == NULL) {
+            if (!save) {
                 save = conn;
                 continue;
             }
@@ -751,16 +920,25 @@ downstream_connection_get_lowest_rtt(rproxy_t * rproxy) {
 /**
  * @brief Attempts to find the first idle downstream connection available.
  *
- * @param rproxy
+ * @param rule
  *
  * @return downstream connection, otherwise NULL if none are available.
  */
 downstream_c_t *
-downstream_connection_get_none(rproxy_t * rproxy) {
-    downstream_t * downstream;
+downstream_connection_get_none(rule_t * rule) {
+    lztq_elem * ds_elem;
+    lztq_elem * ds_elem_save;
 
-    /* iterate through each downstream and return the first available idle connection */
-    TAILQ_FOREACH(downstream, &rproxy->downstreams, next) {
+    assert(rule != NULL);
+    assert(rule->downstreams != NULL);
+
+    for (ds_elem = lztq_first(rule->downstreams); ds_elem; ds_elem = ds_elem_save) {
+        downstream_t * downstream;
+
+        ds_elem_save = lztq_next(ds_elem);
+        downstream   = lztq_elem_data(ds_elem);
+        assert(downstream != NULL);
+
         if (downstream->num_idle == 0) {
             continue;
         }
@@ -776,66 +954,76 @@ downstream_connection_get_none(rproxy_t * rproxy) {
  *        It should be noted that if only 1 downstream is configured, this will
  *        fallback to using the RTT load-balancing method.
  *
- * @param rproxy
+ * @param rule
  *
  * @return a downstream connection, NULL if none are avail.
  */
 downstream_c_t *
-downstream_connection_get_rr(rproxy_t * rproxy) {
-    downstream_t   * last_used_downstream;
+downstream_connection_get_rr(rule_t * rule) {
     downstream_t   * downstream;
+    lztq_elem      * downstream_elem;
+    lztq_elem      * last_used_elem;
     downstream_c_t * conn;
 
-    assert(rproxy != NULL);
+    assert(rule != NULL);
+    assert(rule->downstreams != NULL);
 
-    if (TAILQ_FIRST(&rproxy->downstreams) == TAILQ_LAST(&rproxy->downstreams, downstream_q)) {
-        /* only one downstream is configured, fall-back to RTT method */
-        return downstream_connection_get_lowest_rtt(rproxy);
+    if (lztq_size(rule->downstreams) <= 1) {
+        return downstream_connection_get_lowest_rtt(rule);
     }
 
-    last_used_downstream = rproxy->last_downstream_used;
+    last_used_elem = rule->last_downstream_used;
 
-    if (!last_used_downstream) {
-        downstream = TAILQ_FIRST(&rproxy->downstreams);
+    if (!last_used_elem) {
+        downstream_elem = lztq_first(rule->downstreams);
+        last_used_elem  = lztq_last(rule->downstreams);
     } else {
-        downstream = TAILQ_NEXT(last_used_downstream, next);
+        downstream_elem = lztq_next(last_used_elem);
     }
 
-    if (!downstream) {
+    if (!downstream_elem) {
         /* we're at the end of the list, circle back to the first */
-        downstream = TAILQ_FIRST(&rproxy->downstreams);
+        downstream_elem = lztq_first(rule->downstreams);
     }
 
     conn = NULL;
 
     do {
-        if (!downstream) {
-            /* we have reached the end of the list, circle back to the first */
-            downstream = TAILQ_FIRST(&rproxy->downstreams);
+        downstream_t * ds;
+
+        if (!downstream_elem) {
+            /* we seem to have reached the end of the list, circle back to the
+             * first.
+             */
+            if (!(downstream_elem = lztq_first(rule->downstreams))) {
+                return NULL;
+            }
         }
 
-        if ((downstream == last_used_downstream) && downstream->num_idle == 0) {
+        ds = lztq_elem_data(downstream_elem);
+        assert(ds != NULL);
+
+        if ((downstream_elem == last_used_elem) && ds->num_idle == 0) {
             /* we have wrapped back to the original, and we don't have any idle
-             * connections here either, so we return NULL
+             * connections at all, so return NULL.
              */
             return NULL;
         }
 
-        if (downstream->num_idle == 0) {
-            /* no idle connections for this downstream, try the next */
-            downstream = TAILQ_NEXT(downstream, next);
+        if (ds->num_idle == 0) {
+            /* no idle connections on this downstream, try the next */
+            downstream_elem = lztq_next(downstream_elem);
             continue;
         }
 
-        /* found a downstream with idle connections, so grab the first
-         * connection and return
+        /* If we reached here, we have found a downstream with idle connections,
+         * so grab the first downstream_c_t and return it.
          */
 
-        conn = TAILQ_FIRST(&downstream->idle);
+        conn = TAILQ_FIRST(&ds->idle);
         assert(conn != NULL);
 
-        /* update the last used downstream pointer */
-        rproxy->last_downstream_used = downstream;
+        rule->last_downstream_used = downstream_elem;
         break;
     } while (1);
 
@@ -843,26 +1031,27 @@ downstream_connection_get_rr(rproxy_t * rproxy) {
 } /* downstream_connection_get_rr */
 
 downstream_c_t *
-downstream_connection_get(rproxy_t * rproxy) {
-    server_cfg_t * scfg;
+downstream_connection_get(rule_t * rule) {
+    rule_cfg_t * rcfg;
 
-    assert(rproxy != NULL);
-    assert(rproxy->server_cfg != NULL);
+    assert(rule != NULL);
 
-    scfg = rproxy->server_cfg;
+    rcfg = rule->config;
+    assert(rcfg != NULL);
 
-    switch (scfg->lbalance_method) {
+    switch (rcfg->lb_method) {
         case lb_method_rtt:
-            return downstream_connection_get_lowest_rtt(rproxy);
+            return downstream_connection_get_lowest_rtt(rule);
         case lb_method_most_idle:
-            return downstream_connection_get_most_idle(rproxy);
+            return downstream_connection_get_most_idle(rule);
         case lb_method_rr:
-            return downstream_connection_get_rr(rproxy);
+            return downstream_connection_get_rr(rule);
         case lb_method_none:
-            return downstream_connection_get_none(rproxy);
+            return downstream_connection_get_none(rule);
         case lb_method_rand:
         default:
-            logger_log_error(rproxy->logger, "[CRIT] Unknown loadbalance method %d", scfg->lbalance_method);
+            logger_log(rule->rproxy->log, lzlog_crit,
+                       "%s(): unknown lb method %d", __FUNCTION__, rcfg->lb_method);
             break;
     }
 
@@ -911,7 +1100,7 @@ downstream_connection_writecb(evbev_t * bev, void * arg) {
     }
 
     return;
-}
+} /* downstream_connection_writecb */
 
 /**
  * @brief called when a downstream has either successfully been connect()'d or
@@ -957,6 +1146,7 @@ downstream_connection_eventcb(evbev_t * bev, short events, void * arg) {
 
     if (connection->request) {
         request_t       * request    = connection->request;
+        rule_t          * rule       = request->rule;
         evhtp_request_t * up_request = request->upstream_request;
 
         request->error = 1;
@@ -967,8 +1157,9 @@ downstream_connection_eventcb(evbev_t * bev, short events, void * arg) {
             if (!request->upstream_err) {
                 evhtp_unset_all_hooks(&up_request->hooks);
 
-                logger_log_request_error(rproxy->logger, request,
-                                         "[WARN] Downstream request proxy:%d -> %s:%d never completed",
+                logger_log_request_error(rule->err_log, request,
+                                         "%s(): ds req proxy:%d -> %s:%d never completed",
+                                         __FUNCTION__,
                                          connection->sport,
                                          downstream->config->host,
                                          downstream->config->port);
@@ -983,6 +1174,11 @@ downstream_connection_eventcb(evbev_t * bev, short events, void * arg) {
              * double connection_set_down() call. This should be dealt with
              * differently to reduce overhead.
              */
+        } else if (request->upstream_bev) {
+            bufferevent_free(request->upstream_bev);
+            request_free(request);
+
+            connection->request = NULL;
         }
     }
 
@@ -991,14 +1187,15 @@ downstream_connection_eventcb(evbev_t * bev, short events, void * arg) {
      */
 
     if (connection && connection->status != downstream_status_down) {
-        logger_log_error(rproxy->logger, "[CRIT] downstream socket event (source port=%d) error %d [ %s%s%s%s%s%s]",
-                         connection->sport, events,
-                         (events & BEV_EVENT_READING) ? "READING " : "",
-                         (events & BEV_EVENT_WRITING) ? "WRITING " : "",
-                         (events & BEV_EVENT_EOF)     ? "EOF " : "",
-                         (events & BEV_EVENT_ERROR) ? "ERROR " : "",
-                         (events & BEV_EVENT_TIMEOUT) ? "TIMEOUT " : "",
-                         (events & BEV_EVENT_CONNECTED) ? "CONNECTED " : "");
+        printf("downstream %s socket event (source port=%d) error %d (errno=%s) [ %s%s%s%s%s%s]",
+                   connection->parent->config->name,
+                   connection->sport, events, strerror(errno),
+                   (events & BEV_EVENT_READING) ? "READING " : "",
+                   (events & BEV_EVENT_WRITING) ? "WRITING " : "",
+                   (events & BEV_EVENT_EOF)     ? "EOF " : "",
+                   (events & BEV_EVENT_ERROR) ? "ERROR " : "",
+                   (events & BEV_EVENT_TIMEOUT) ? "TIMEOUT " : "",
+                   (events & BEV_EVENT_CONNECTED) ? "CONNECTED " : "");
     }
 
 
@@ -1020,36 +1217,47 @@ downstream_connection_readcb(evbev_t * bev, void * arg) {
     rproxy_t       * rproxy;
     request_t      * request;
     evbuf_t        * evbuf;
+    rule_cfg_t     * rule_cfg;
+    rule_t         * rule;
     void           * buf;
     size_t           avail;
     size_t           nread;
     struct timeval   diff;
     int              res;
 
-    assert(arg != NULL);
 
     connection = arg;
+    assert(connection != NULL);
+
     downstream = connection->parent;
     assert(downstream != NULL);
 
     rproxy     = downstream->rproxy;
     assert(rproxy != NULL);
 
-    if (!(request = connection->request)) {
-        /* XXX: technically we should never see this, deal with this as an error maybe? */
+    request    = connection->request;
+    assert(request != NULL);
 
-        /* we were signaled to read from the downstream, yet no request
-         * has been associated with this connection, so we drain the input
-         * buffers and return immediately.
+    rule       = request->rule;
+    assert(rule != NULL);
+
+    rule_cfg   = rule->config;
+    assert(rule_cfg != NULL);
+
+    evbuf      = bufferevent_get_input(bev);
+    assert(evbuf != NULL);
+
+    if (rule_cfg->passthrough == true) {
+        /* passthrough enabled, just write the data from the downstream back to
+         * the upstream.
          */
-        evbuffer_drain(bufferevent_get_input(bev), -1);
-        evbuffer_drain(bufferevent_get_output(bev), -1);
 
-        downstream_connection_set_down(connection);
+        /* write the data that came from the downstream to the upstream */
+        bufferevent_write_buffer(request->upstream_bev, bufferevent_get_input(bev));
+
         return;
     }
 
-    evbuf = bufferevent_get_input(bev);
     avail = evbuffer_get_length(evbuf);
     buf   = evbuffer_pullup(evbuf, avail);
 
@@ -1084,13 +1292,15 @@ downstream_connection_readcb(evbev_t * bev, void * arg) {
          * has been written to the upstream.
          */
 
-        logger_log_request(rproxy->logger, request);
+        logger_log_request(rule->req_log, request);
 
         return evhtp_send_reply_end(request->upstream_request);
     }
 
     if (REQUEST_HAS_ERROR(request)) {
         /* deal with whatever type of error happened */
+        evhtp_connection_t * c =
+            evhtp_request_get_connection(request->upstream_request);
 
         if (request->upstream_err) {
             /* upstream_error() was triggered, which means the upstream encountered
@@ -1104,6 +1314,8 @@ downstream_connection_readcb(evbev_t * bev, void * arg) {
             if (request->done) {
                 downstream_connection_set_idle(connection);
             } else {
+                /* evhtp_connection_free(c); */
+                evhtp_send_reply(request->upstream_request, 200);
                 downstream_connection_set_down(connection);
             }
         } else if (request->error) {
@@ -1114,15 +1326,18 @@ downstream_connection_readcb(evbev_t * bev, void * arg) {
             evhtp_unset_all_hooks(&request->upstream_request->hooks);
 
             if (request->done) {
-                logger_log_request(rproxy->logger, request);
+                logger_log_request(rule->req_log, request);
+
                 evhtp_send_reply_end(request->upstream_request);
             } else {
+                /* evhtp_connection_free(c); */
+                evhtp_send_reply(request->upstream_request, 200);
                 downstream_connection_set_down(connection);
             }
         }
 
         /* free up our request */
-        request_free(request);
+        request_free(connection->request);
         connection->request = NULL;
     }
 
@@ -1139,10 +1354,9 @@ downstream_connection_readcb(evbev_t * bev, void * arg) {
  */
 void
 downstream_connection_retry(int sock, short which, void * arg) {
-    downstream_c_t   * connection;
-    downstream_t     * downstream;
-    rproxy_t         * rproxy;
-    struct sockaddr_in sin;
+    downstream_c_t * connection;
+    downstream_t   * downstream;
+    rproxy_t       * rproxy;
 
     assert(arg != NULL);
 
@@ -1157,16 +1371,10 @@ downstream_connection_retry(int sock, short which, void * arg) {
         bufferevent_free(connection->connection);
     }
 
-
-    sin.sin_family         = AF_INET;
-    sin.sin_addr.s_addr    = inet_addr(downstream->config->host);
-    sin.sin_port           = htons(downstream->config->port);
-
     connection->connection = bufferevent_socket_new(downstream->evbase, -1,
                                                     BEV_OPT_CLOSE_ON_FREE);
 
     assert(connection->connection != NULL);
-
 
     bufferevent_setcb(connection->connection,
                       downstream_connection_readcb,
@@ -1176,32 +1384,30 @@ downstream_connection_retry(int sock, short which, void * arg) {
     /* once the socket has connected (or errored), the
      * downstream_connection_eventcb function is called.
      */
-    bufferevent_socket_connect(connection->connection,
-                               (struct sockaddr *)&sin, sizeof(sin));
+    bufferevent_socket_connect_hostname(connection->connection,
+                                        rproxy->dns_base, AF_INET,
+                                        downstream->config->host,
+                                        downstream->config->port);
 
     {
         /* if configured, apply our read/write timeouts on the downstream
          * connection.
          */
-        int            s_read  = 0;
-        int            s_write = 0;
-        struct timeval r_tv    = { 0 };
-        struct timeval w_tv    = { 0 };
+        struct timeval * tv_read  = NULL;
+        struct timeval * tv_write = NULL;
 
-        if (downstream->config->read_timeout) {
-            r_tv.tv_sec = downstream->config->read_timeout;
-            s_read      = 1;
+        if (downstream->config->read_timeout.tv_sec ||
+            downstream->config->read_timeout.tv_usec) {
+            tv_read = &downstream->config->read_timeout;
         }
 
-        if (downstream->config->write_timeout) {
-            w_tv.tv_sec = downstream->config->write_timeout;
-            s_write     = 1;
+        if (downstream->config->write_timeout.tv_sec ||
+            downstream->config->write_timeout.tv_usec) {
+            tv_write = &downstream->config->write_timeout;
         }
 
-        if (s_read || s_write) {
-            bufferevent_set_timeouts(connection->connection,
-                                     s_read ? &r_tv : NULL,
-                                     s_write ? &w_tv : NULL);
+        if (tv_read || tv_write) {
+            bufferevent_set_timeouts(connection->connection, tv_read, tv_write);
         }
     }
 
@@ -1232,14 +1438,14 @@ downstream_connection_init(evbase_t * evbase, downstream_t * downstream) {
 
     downstream->evbase = evbase;
 
-    for (i = 0; i < downstream->config->connections; i++) {
+    for (i = 0; i < downstream->config->n_connections; i++) {
         downstream_c_t * connection;
         int              res;
 
         if (!(connection = downstream_connection_new(evbase, downstream))) {
-            logger_log_error(downstream->rproxy->logger,
-                             "[CRIT] Could not create new downstream connection! %s",
-                             strerror(errno));
+            logger_log(downstream->rproxy->log, lzlog_crit,
+                       "%s(): could not create ds conn (%s)",
+                       __FUNCTION__, strerror(errno));
             exit(EXIT_FAILURE);
         }
 
@@ -1310,7 +1516,8 @@ downstream_connection_new(evbase_t * evbase, downstream_t * downstream) {
  * @param downstream
  */
 void
-downstream_free(downstream_t * downstream) {
+downstream_free(void * arg) {
+    downstream_t   * downstream = arg;
     downstream_c_t * conn;
     downstream_c_t * save;
 
@@ -1352,6 +1559,9 @@ downstream_free(downstream_t * downstream) {
 downstream_t *
 downstream_new(rproxy_t * rproxy, downstream_cfg_t * cfg) {
     downstream_t * downstream;
+
+    assert(rproxy != NULL);
+    assert(cfg != NULL);
 
     if (!(downstream = calloc(sizeof(downstream_t), 1))) {
         return NULL;
