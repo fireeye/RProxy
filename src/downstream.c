@@ -1188,14 +1188,14 @@ downstream_connection_eventcb(evbev_t * bev, short events, void * arg) {
 
     if (connection && connection->status != downstream_status_down) {
         printf("downstream %s socket event (source port=%d) error %d (errno=%s) [ %s%s%s%s%s%s]",
-                   connection->parent->config->name,
-                   connection->sport, events, strerror(errno),
-                   (events & BEV_EVENT_READING) ? "READING " : "",
-                   (events & BEV_EVENT_WRITING) ? "WRITING " : "",
-                   (events & BEV_EVENT_EOF)     ? "EOF " : "",
-                   (events & BEV_EVENT_ERROR) ? "ERROR " : "",
-                   (events & BEV_EVENT_TIMEOUT) ? "TIMEOUT " : "",
-                   (events & BEV_EVENT_CONNECTED) ? "CONNECTED " : "");
+               connection->parent->config->name,
+               connection->sport, events, strerror(errno),
+               (events & BEV_EVENT_READING) ? "READING " : "",
+               (events & BEV_EVENT_WRITING) ? "WRITING " : "",
+               (events & BEV_EVENT_EOF)     ? "EOF " : "",
+               (events & BEV_EVENT_ERROR) ? "ERROR " : "",
+               (events & BEV_EVENT_TIMEOUT) ? "TIMEOUT " : "",
+               (events & BEV_EVENT_CONNECTED) ? "CONNECTED " : "");
     }
 
 
@@ -1235,16 +1235,18 @@ downstream_connection_readcb(evbev_t * bev, void * arg) {
     rproxy     = downstream->rproxy;
     assert(rproxy != NULL);
 
-    request    = connection->request;
-    assert(request != NULL);
+    if (!(request = connection->request)) {
+        downstream_connection_set_down(connection);
+        return;
+    }
 
-    rule       = request->rule;
+    rule     = request->rule;
     assert(rule != NULL);
 
-    rule_cfg   = rule->config;
+    rule_cfg = rule->config;
     assert(rule_cfg != NULL);
 
-    evbuf      = bufferevent_get_input(bev);
+    evbuf    = bufferevent_get_input(bev);
     assert(evbuf != NULL);
 
     if (rule_cfg->passthrough == true) {
