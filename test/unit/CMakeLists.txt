@@ -17,6 +17,6 @@ include_directories(REGRES_INCLUDE_DIRS
 )
 
 add_executable(regress_main ${REGRESS_SOURCES})
-target_link_libraries(regress_main ${EXT_LIBS} ${SYS_LIBS})
+target_link_libraries(regress_main ${RPROXY_EXTERNAL_LIBS} ${SYS_LIBS})
 
 file(COPY regress_cfg.cfg DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/)
