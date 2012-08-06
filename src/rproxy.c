@@ -852,12 +852,38 @@ downstream_pending_timeout(evutil_socket_t fd, short what, void * arg) {
     request_t       * ds_req;
     rproxy_t        * rproxy;
     evhtp_request_t * up_req;
+    rule_t          * rule;
+    rule_cfg_t      * rule_cfg;
 
-    ds_req = arg;
+    ds_req   = arg;
     assert(ds_req != NULL);
 
-    rproxy = ds_req->rproxy;
+    rule     = ds_req->rule;
+    assert(rule != NULL);
+
+    rule_cfg = rule->config;
+    assert(rule_cfg != NULL);
+
+    rproxy   = ds_req->rproxy;
     assert(rproxy != NULL);
+
+    if (rule_cfg->passthrough == true) {
+        /*
+         * since we're in passthrough mode, we don't need to free any evhtp
+         * resources; so we just close the upstream socket and free the request
+         */
+        if (ds_req->pending) {
+            TAILQ_REMOVE(&rproxy->pending, ds_req, next);
+            rproxy->n_pending -= 1;
+        }
+
+        bufferevent_free(ds_req->upstream_bev);
+
+        logger_log(rule->err_log, lzlog_notice,
+                   "%s(): pending timeout hit for upstream (passthrough)", __FUNCTION__);
+
+        return request_free(ds_req);
+    }
 
     up_req = ds_req->upstream_request;
     assert(up_req != NULL);
@@ -877,10 +903,10 @@ downstream_pending_timeout(evutil_socket_t fd, short what, void * arg) {
     evhtp_send_reply(up_req, 503);
 
     if (ds_req->rule) {
-        logger_log(ds_req->rule->err_log, lzlog_notice,
+        logger_log(rule->err_log, lzlog_notice,
                    "%s(): pending timeout hit for upstream client", __FUNCTION__);
     }
-}
+} /* downstream_pending_timeout */
 
 /**
  * @brief Before accepting an upstream connection, evhtp will call this function

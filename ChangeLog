@@ -1,5 +1,36 @@
-v1.0.23
- o Added option for inline dep builds. (Mark Ellzey)
+v2.0.1
+ o set downstream down when request is null. (7c5992d Mark Ellzey)
+ o Removing doxygen output. (3031101 Mark Ellzey)
+ o Fixed issue with timeouts and passthrough's. (56d7583 Mark Ellzey)
+
+v2.0.0
+ o Moving into the 2.x rule-based proxy architecture. (2dac0cb Mark Ellzey)
+ o vhost / SNI support. (a08a68b Mark Ellzey)
+ o Fixed thread race condition bug for downstream IO (258cea1 Mark Ellzey)
+ o Cleanup and documentation. (4081e75 Mark Ellzey)
+ o Initial checkin of 'passthrough' feature. (9af3453 Mark Ellzey)
+ o Move passthrough ownership transition after upstream headers have been processed. (01b2404 Mark Ellzey)
+ o Added log abstraction API "lzlog" (e3a23b6 Mark Ellzey)
+ o Set -Wno-deprecated-declarations cflag for OSX (710b735 Mark Ellzey)
+ o Request logging initial re-commit. (b7d9841 Mark Ellzey)
+ o downstream host cfg can now be a hostname. (7a74627 Mark Ellzey)
+ o Finished up logging API conversion over to lzlog. (a146877 Mark Ellzey)
+ o Replaced old logging calls with new API (e188b54 Mark Ellzey)
+ o Removed old logging calls. (cd551fe Mark Ellzey)
+ o upstream_request_start is now an on_hostname hook. (d30816a Mark Ellzey)
+ o Initial commit of the internal redirect feature. (aab993d Mark Ellzey)
+ o Working internal redirect initial commit. (4b8eb58 Mark Ellzey)
+ o Redirect now enabled on a per-rule basis. (94cbbf2 Mark Ellzey)
+ o Smoketest updates, bugfixes, extra config opts. (49151d1 Mark Ellzey)
+ o Remove sensitive x-headers even if not configured. (7cb57dd Mark Ellzey)
+ o Added mem_trimsz for mallopt config. (77b4e81 Mark Ellzey)
+ o Set upstream req to NULL when take_ownership is on (1ec8fc0 Mark Ellzey)
+ o Free request if passthrough enabled. (2a40e46 Mark Ellzey)
+ o Logging updates, potential doublewrite fix. (a37b22c Mark Ellzey)
+ o Fix for double write, hopefully. (d0a4459 Mark Ellzey)
+ o removed x509 verify logging for now. (3f0366d Mark Ellzey)
+ o Fixed up file logging. (c0cf17d Mark Ellzey)
+ o Documentation updates. (693a194 Mark Ellzey)
 
 v1.0.22
  o Fix potential garbage ret from ssl_x509_ext_tostr (5a29cf5 Mark Ellzey)
