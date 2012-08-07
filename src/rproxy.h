@@ -33,8 +33,8 @@
 
 #if EVHTP_VERSION_MAJOR <= 0
 #if EVHTP_VERSION_MINOR <= 4
-#if EVHTP_VERSION_PATCH < 15
-#error RProxy requires libevhtp v0.4.15 or greater
+#if EVHTP_VERSION_PATCH < 16
+#error RProxy requires libevhtp v0.4.16 or greater
 #endif
 #endif
 #endif
