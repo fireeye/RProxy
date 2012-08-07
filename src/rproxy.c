@@ -264,6 +264,8 @@ passthrough_eventcb(evbev_t * bev, short events, void * arg) {
     downstream_connection_set_down(ds_conn);
 
     request_free(request);
+
+    ds_conn->request = NULL;
 }
 
 evhtp_res
