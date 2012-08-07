@@ -1,3 +1,7 @@
+v2.0.2
+ o set connection->request NULL when passthrough event (7585256 Mark Ellzey)
+ o Require evhtp 0.4.16 (017b93c Mark Ellzey)
+
 v2.0.1
  o set downstream down when request is null. (7c5992d Mark Ellzey)
  o Removing doxygen output. (3031101 Mark Ellzey)
