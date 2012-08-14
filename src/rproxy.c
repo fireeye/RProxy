@@ -1205,6 +1205,10 @@ add_callback_rule(lztq_elem * elem, void * arg) {
         case rule_type_glob:
             cb = evhtp_set_glob_cb(htp, rule->matchstr, NULL, rule);
             break;
+        case rule_type_default:
+            /* default rules will match anything */
+            cb = evhtp_set_glob_cb(htp, "*", NULL, rule);
+            break;
     }
 
     assert(cb != NULL);

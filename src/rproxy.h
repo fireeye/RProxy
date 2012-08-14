@@ -46,7 +46,8 @@
 enum rule_type {
     rule_type_exact,
     rule_type_regex,
-    rule_type_glob
+    rule_type_glob,
+    rule_type_default
 };
 
 enum lb_method {

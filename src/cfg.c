@@ -116,14 +116,21 @@ static cfg_opt_t rule_glob_opts[] = {
     CFG_END()
 };
 
+static cfg_opt_t rule_default_opts[] = {
+    CFG_INT("type",       rule_type_default, CFGF_NONE),
+    CFG_URI_MATCH_OPTS(),
+    CFG_END()
+};
+
 static cfg_opt_t vhost_opts[] = {
-    CFG_SEC("ssl",           ssl_opts,        CFGF_NODEFAULT),
-    CFG_SEC("if-uri-match",  rule_exact_opts, CFGF_TITLE | CFGF_MULTI | CFGF_NO_TITLE_DUPES),
-    CFG_SEC("if-uri-rmatch", rule_regex_opts, CFGF_TITLE | CFGF_MULTI | CFGF_NO_TITLE_DUPES),
-    CFG_SEC("if-uri-gmatch", rule_glob_opts,  CFGF_TITLE | CFGF_MULTI | CFGF_NO_TITLE_DUPES),
-    CFG_STR_LIST("aliases",  NULL,            CFGF_NONE),
-    CFG_SEC("logging",       logging_opts,    CFGF_NODEFAULT),
-    CFG_SEC("headers",       headers_opts,    CFGF_NODEFAULT),
+    CFG_SEC("ssl",           ssl_opts,          CFGF_NODEFAULT),
+    CFG_SEC("if-uri-match",  rule_exact_opts,   CFGF_TITLE | CFGF_MULTI | CFGF_NO_TITLE_DUPES),
+    CFG_SEC("if-uri-rmatch", rule_regex_opts,   CFGF_TITLE | CFGF_MULTI | CFGF_NO_TITLE_DUPES),
+    CFG_SEC("if-uri-gmatch", rule_glob_opts,    CFGF_TITLE | CFGF_MULTI | CFGF_NO_TITLE_DUPES),
+    CFG_SEC("default",       rule_default_opts, CFGF_NODEFAULT),
+    CFG_STR_LIST("aliases",  NULL,              CFGF_NONE),
+    CFG_SEC("logging",       logging_opts,      CFGF_NODEFAULT),
+    CFG_SEC("headers",       headers_opts,      CFGF_NODEFAULT),
     CFG_END()
 };
 
@@ -762,11 +769,16 @@ rule_cfg_parse(cfg_t * cfg) {
 
     assert(cfg != NULL);
 
-    rcfg                 = rule_cfg_new();
+    rcfg       = rule_cfg_new();
     assert(cfg != NULL);
 
-    rcfg->type           = cfg_getint(cfg, "type");
-    rcfg->matchstr       = strdup(cfg_title(cfg));
+    rcfg->type = cfg_getint(cfg, "type");
+
+    if (cfg_title(cfg)) {
+	/* NULL title means we have hit the default rule */
+        rcfg->matchstr = strdup(cfg_title(cfg));
+    }
+
     rcfg->lb_method      = lbstr_to_lbtype(cfg_getstr(cfg, "lb-method"));
     rcfg->headers        = headers_cfg_parse(cfg_getsec(cfg, "headers"));
     rcfg->passthrough    = cfg_getbool(cfg, "passthrough");
@@ -865,6 +877,7 @@ vhost_cfg_parse(cfg_t * cfg) {
     cfg_t       * req_log_cfg;
     cfg_t       * err_log_cfg;
     cfg_t       * hdr_cfg;
+    cfg_t       * default_rule_cfg;
     int           i;
     int           res;
 
@@ -873,6 +886,25 @@ vhost_cfg_parse(cfg_t * cfg) {
 
     vcfg->server_name = strdup(cfg_title(cfg));
     vcfg->ssl_cfg     = ssl_cfg_parse(cfg_getsec(cfg, "ssl"));
+
+    /*
+     * *if we find a default rule, we must make that the very first since this
+     * should be processed after all other rules. This is due to the fact that
+     * evhtp processes requests via a linked list instead of a tailq; thus it
+     * reverses order.
+     */
+
+    if ((default_rule_cfg = cfg_getsec(cfg, "default"))) {
+        rule_cfg_t * default_rule;
+        lztq_elem  * elem;
+
+        default_rule = rule_cfg_parse(default_rule_cfg);
+        assert(default_rule != NULL);
+
+        elem         = lztq_append(vcfg->rule_cfgs, default_rule,
+                                   sizeof(default_rule), rule_cfg_free);
+        assert(elem != NULL);
+    }
 
     res = parse_rule_type_and_append(vcfg, cfg, "if-uri-match");
     assert(res >= 0);
@@ -944,7 +976,7 @@ server_cfg_parse(cfg_t * cfg) {
     scfg->pending_timeout.tv_usec = cfg_getnint(cfg, "pending-timeout", 1);
 
     if ((log_cfg = cfg_getsec(cfg, "logging"))) {
-        scfg->log_cfg = logger_cfg_parse(cfg_getsec(log_cfg, "error")); //logger_cfg_parse(cfg_getsec(log_cfg, "error"));
+        scfg->log_cfg = logger_cfg_parse(cfg_getsec(log_cfg, "error"));
     }
 
     /* parse and insert all the configured downstreams */
