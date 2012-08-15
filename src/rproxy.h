@@ -31,10 +31,10 @@
 
 #define RPROXY_VERSION "2.0.2"
 
-#if EVHTP_VERSION_MAJOR <= 0
-#if EVHTP_VERSION_MINOR <= 4
-#if EVHTP_VERSION_PATCH < 16
-#error RProxy requires libevhtp v0.4.16 or greater
+#if EVHTP_VERSION_MAJOR <= 1
+#if EVHTP_VERSION_MINOR <= 0
+#if EVHTP_VERSION_PATCH <  0
+#error RProxy requires libevhtp v1.0.0 or greater
 #endif
 #endif
 #endif
