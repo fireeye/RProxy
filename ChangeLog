@@ -1,3 +1,10 @@
+v2.0.3
+ o Added a "default" rule type. (934bb6d Mark Ellzey)
+ o Logging heiarchy server -> vhost -> rule (6b2de9c Mark Ellzey)
+ o Set event errors as INFO error logging. (d044e91 Mark Ellzey)
+ o Fixu non-request logging bugs. (4c050e5 Mark Ellzey)
+ o Require evhtp v1.0.0 (c8b3497 Mark Ellzey)
+
 v2.0.2
  o set connection->request NULL when passthrough event (7585256 Mark Ellzey)
  o Require evhtp 0.4.16 (017b93c Mark Ellzey)
