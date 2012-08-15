@@ -616,7 +616,7 @@ downstream_connection_set_idle(downstream_c_t * connection) {
             downstream->num_idle   -= 1;
             break;
         case downstream_status_down:
-            logger_log(downstream->rproxy->log, lzlog_info,
+            logger_log(downstream->rproxy->err_log, lzlog_info,
                        "%s() downstream %s:%d is now UP",
                        __FUNCTION__,
                        downstream->config->host,
@@ -678,7 +678,7 @@ downstream_connection_set_down(downstream_c_t * connection) {
     }
 
     if (connection->status != downstream_status_down) {
-        logger_log(downstream->rproxy->log, lzlog_err,
+        logger_log(downstream->rproxy->err_log, lzlog_err,
                    "%s(): downstream proxy:%d -> %s:%d is down",
                    __FUNCTION__,
                    connection->sport,
@@ -1050,7 +1050,7 @@ downstream_connection_get(rule_t * rule) {
             return downstream_connection_get_none(rule);
         case lb_method_rand:
         default:
-            logger_log(rule->rproxy->log, lzlog_crit,
+            logger_log(rule->rproxy->err_log, lzlog_crit,
                        "%s(): unknown lb method %d", __FUNCTION__, rcfg->lb_method);
             break;
     }
@@ -1445,7 +1445,7 @@ downstream_connection_init(evbase_t * evbase, downstream_t * downstream) {
         int              res;
 
         if (!(connection = downstream_connection_new(evbase, downstream))) {
-            logger_log(downstream->rproxy->log, lzlog_crit,
+            logger_log(downstream->rproxy->err_log, lzlog_crit,
                        "%s(): could not create ds conn (%s)",
                        __FUNCTION__, strerror(errno));
             exit(EXIT_FAILURE);

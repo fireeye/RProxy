@@ -171,7 +171,8 @@ struct server_cfg {
     evhtp_ssl_cfg_t * ssl_cfg;      /**< if enabled, the ssl configuration */
     lztq            * downstreams;  /**< list of downstream_cfg_t's */
     lztq            * vhosts;       /**< list of vhost_cfg_t's */
-    logger_cfg_t    * log_cfg;      /**< generic server-specific logging */
+    logger_cfg_t    * req_log_cfg;
+    logger_cfg_t    * err_log_cfg;
 };
 
 
@@ -336,11 +337,14 @@ struct rproxy {
     struct evdns_base * dns_base;
     event_t           * request_ev;
     server_cfg_t      * server_cfg;
-    logger_t          * log;         /* server specific error logging */
+    logger_t          * request_log; /* server specific request logging */
+    logger_t          * error_log;   /* server specific error logging */
     lztq              * rules;
     lztq              * downstreams; /**< list of all downstream_t's */
     int                 n_pending;   /**< number of pending requests */
     pending_request_q_t pending;     /**< list of pending upstream request_t's */
+    logger_t          * req_log;
+    logger_t          * err_log;
 };
 
 /************************************************

@@ -976,7 +976,8 @@ server_cfg_parse(cfg_t * cfg) {
     scfg->pending_timeout.tv_usec = cfg_getnint(cfg, "pending-timeout", 1);
 
     if ((log_cfg = cfg_getsec(cfg, "logging"))) {
-        scfg->log_cfg = logger_cfg_parse(cfg_getsec(log_cfg, "error"));
+        scfg->req_log_cfg = logger_cfg_parse(cfg_getsec(log_cfg, "request"));
+        scfg->err_log_cfg = logger_cfg_parse(cfg_getsec(log_cfg, "error"));
     }
 
     /* parse and insert all the configured downstreams */

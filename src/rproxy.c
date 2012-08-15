@@ -493,7 +493,7 @@ send_upstream_new_chunk(evhtp_request_t * upstream_req, uint64_t len, void * arg
     assert(rproxy != NULL);
 
     if (!upstream_req) {
-        logger_log(rproxy->log, lzlog_err, "%s(): !upstream_req", __FUNCTION__);
+        logger_log(rproxy->err_log, lzlog_err, "%s(): !upstream_req", __FUNCTION__);
 
         return EVHTP_RES_FATAL;
     }
@@ -772,19 +772,32 @@ map_vhost_rules_to_downstreams(lztq_elem * elem, void * arg) {
     rule->config       = rule_cfg;
     rule->parent_vhost = vhost;
 
-    /* setup rule specific logging options, if not found, logging is done via
-     * the parent vhost's logging functions.
+    /*
+     * if a rule specific logging is found then all is good to go. otherwise
+     * if a vhost specific logging is found then set it to rule. otherwise
+     * if a server specific logging is found, set both vhost and rule to this.
      */
+
     if (rule_cfg->req_log) {
         rule->req_log = logger_init(rule_cfg->req_log, 0);
-    } else {
+    } else if (vhost->req_log) {
         rule->req_log = vhost->req_log;
+    } else {
+        rule->req_log  = rproxy->req_log;
+        vhost->req_log = rproxy->req_log;
     }
+
+    /*
+     * the same logic applies as above for error logging.
+     */
 
     if (rule_cfg->err_log) {
         rule->err_log = logger_init(rule_cfg->err_log, 0);
-    } else {
+    } else if (vhost->err_log) {
         rule->err_log = vhost->err_log;
+    } else {
+        rule->err_log  = rproxy->err_log;
+        vhost->err_log = rproxy->err_log;
     }
 
     rule->downstreams = lztq_new();
@@ -1083,19 +1096,17 @@ rproxy_thread_init(evhtp_t * htp, evthr_t * thr, void * arg) {
     assert(htp != NULL);
     assert(thr != NULL);
 
-    server_cfg = arg;
+    server_cfg          = arg;
     assert(server_cfg != NULL);
 
-    evbase     = evthr_get_base(thr);
+    evbase              = evthr_get_base(thr);
     assert(evbase != NULL);
 
-    rproxy     = calloc(sizeof(rproxy_t), 1);
+    rproxy              = calloc(sizeof(rproxy_t), 1);
     assert(rproxy != NULL);
 
-    if (server_cfg->log_cfg) {
-        rproxy->log = logger_init(server_cfg->log_cfg, 0);
-        assert(rproxy->log != NULL);
-    }
+    rproxy->req_log     = logger_init(server_cfg->req_log_cfg, 0);
+    rproxy->err_log     = logger_init(server_cfg->err_log_cfg, 0);
 
     rproxy->downstreams = lztq_new();
     assert(rproxy->downstreams != NULL);
@@ -1115,10 +1126,6 @@ rproxy_thread_init(evhtp_t * htp, evthr_t * thr, void * arg) {
     rproxy->server_cfg = server_cfg;
     rproxy->evbase     = evbase;
     rproxy->htp        = htp;
-#if 0
-    rproxy->log        = logger_init(server_cfg->rproxy_cfg->log,
-                                     LZLOG_OPT_WLEVEL | LZLOG_OPT_WDATE);
-#endif
 
     /* create a downstream_t instance for each configured downstream */
     res = lztq_for_each(server_cfg->downstreams, add_downstream, rproxy);
