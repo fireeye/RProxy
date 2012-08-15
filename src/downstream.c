@@ -1187,15 +1187,16 @@ downstream_connection_eventcb(evbev_t * bev, short events, void * arg) {
      */
 
     if (connection && connection->status != downstream_status_down) {
-        printf("downstream %s socket event (source port=%d) error %d (errno=%s) [ %s%s%s%s%s%s]",
-               connection->parent->config->name,
-               connection->sport, events, strerror(errno),
-               (events & BEV_EVENT_READING) ? "READING " : "",
-               (events & BEV_EVENT_WRITING) ? "WRITING " : "",
-               (events & BEV_EVENT_EOF)     ? "EOF " : "",
-               (events & BEV_EVENT_ERROR) ? "ERROR " : "",
-               (events & BEV_EVENT_TIMEOUT) ? "TIMEOUT " : "",
-               (events & BEV_EVENT_CONNECTED) ? "CONNECTED " : "");
+        logger_log(rproxy->err_log, lzlog_info,
+                   "downstream %s socket event (source port=%d) error %d (errno=%s) [ %s%s%s%s%s%s]",
+                   connection->parent->config->name,
+                   connection->sport, events, strerror(errno),
+                   (events & BEV_EVENT_READING) ? "READING " : "",
+                   (events & BEV_EVENT_WRITING) ? "WRITING " : "",
+                   (events & BEV_EVENT_EOF)     ? "EOF " : "",
+                   (events & BEV_EVENT_ERROR) ? "ERROR " : "",
+                   (events & BEV_EVENT_TIMEOUT) ? "TIMEOUT " : "",
+                   (events & BEV_EVENT_CONNECTED) ? "CONNECTED " : "");
     }
 
 
