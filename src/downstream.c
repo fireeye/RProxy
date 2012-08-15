@@ -1317,7 +1317,6 @@ downstream_connection_readcb(evbev_t * bev, void * arg) {
             if (request->done) {
                 downstream_connection_set_idle(connection);
             } else {
-                /* evhtp_connection_free(c); */
                 evhtp_send_reply(request->upstream_request, 200);
                 downstream_connection_set_down(connection);
             }
@@ -1333,7 +1332,6 @@ downstream_connection_readcb(evbev_t * bev, void * arg) {
 
                 evhtp_send_reply_end(request->upstream_request);
             } else {
-                /* evhtp_connection_free(c); */
                 evhtp_send_reply(request->upstream_request, 200);
                 downstream_connection_set_down(connection);
             }

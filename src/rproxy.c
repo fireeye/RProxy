@@ -1106,7 +1106,8 @@ rproxy_thread_init(evhtp_t * htp, evthr_t * thr, void * arg) {
     assert(rproxy != NULL);
 
     rproxy->req_log     = logger_init(server_cfg->req_log_cfg, 0);
-    rproxy->err_log     = logger_init(server_cfg->err_log_cfg, 0);
+    rproxy->err_log     = logger_init(server_cfg->err_log_cfg,
+                                      LZLOG_OPT_WNAME | LZLOG_OPT_WPID | LZLOG_OPT_WDATE);
 
     rproxy->downstreams = lztq_new();
     assert(rproxy->downstreams != NULL);

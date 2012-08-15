@@ -254,7 +254,7 @@ logger_log(logger_t * logger, lzlog_level level, char * fmt, ...) {
 
     va_start(ap, fmt);
     {
-        lzlog_write(logger->log, level, fmt, ap);
+        lzlog_vprintf(logger->log, level, fmt, ap);
     }
     va_end(ap);
 }
