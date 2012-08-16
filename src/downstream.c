@@ -617,8 +617,9 @@ downstream_connection_set_idle(downstream_c_t * connection) {
             break;
         case downstream_status_down:
             logger_log(downstream->rproxy->err_log, lzlog_info,
-                       "%s() downstream %s:%d is now UP",
+                       "%s() downstream proxy:%d -> %s:%d is now UP",
                        __FUNCTION__,
+                       connection->sport,
                        downstream->config->host,
                        downstream->config->port);
 
@@ -1281,6 +1282,9 @@ downstream_connection_readcb(evbev_t * bev, void * arg) {
         /* the request processing was aborted at some point, so
          * we mark it as an error
          */
+        logger_log(rule->err_log, lzlog_err,
+                   "%s() response parsing error: %s",
+                   __FUNCTION__, htparser_get_strerror(request->parser));
         request->error = 1;
     }
 

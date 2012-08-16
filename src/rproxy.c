@@ -1219,7 +1219,10 @@ add_callback_rule(lztq_elem * elem, void * arg) {
             break;
     }
 
-    assert(cb != NULL);
+    if (cb == NULL) {
+        fprintf(stderr, "Could not compile evhtp callback for pattern \"%s\"\n", rule->matchstr);
+        exit(EXIT_FAILURE);
+    }
 
     /* if one of the callbacks matches, upstream_request_start will be called
      * with the argument of this rule_cfg_t
