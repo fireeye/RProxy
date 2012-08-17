@@ -281,6 +281,7 @@ logger_log_request_error(logger_t * logger, request_t * request, char * fmt, ...
     va_end(ap);
 
     lzlog_write(logger->log, lzlog_err, evbuffer_pullup(buf, -1));
+    evbuffer_free(buf);
 }
 
 void
