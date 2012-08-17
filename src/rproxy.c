@@ -816,7 +816,8 @@ map_vhost_rules_to_downstreams(lztq_elem * elem, void * arg) {
 
         if (!(ds = downstream_find_by_name(rproxy->downstreams, ds_name))) {
             /* could not find a downstream_t which has this name! */
-            return -1;
+	    fprintf(stderr, "Could not find downstream named '%s!\n", ds_name);
+	    exit(EXIT_FAILURE);
         }
 
         nelem          = lztq_append(rule->downstreams, ds, sizeof(ds), NULL);

@@ -85,6 +85,7 @@ static cfg_opt_t headers_opts[] = {
     CFG_END()
 };
 
+#if 0
 /* uri match options all share a commen set of configuration options, the only
  * difference is the hidden 'match-type' option is set per cfg_opt_t
  */
@@ -121,16 +122,34 @@ static cfg_opt_t rule_default_opts[] = {
     CFG_URI_MATCH_OPTS(),
     CFG_END()
 };
+#endif
+
+static cfg_opt_t rule_opts[] = {
+    CFG_STR("uri-match",                   NULL,         CFGF_NODEFAULT),
+    CFG_STR("uri-gmatch",                  NULL,         CFGF_NODEFAULT),
+    CFG_STR("uri-rmatch",                  NULL,         CFGF_NODEFAULT),
+    CFG_STR_LIST("downstreams",            NULL,         CFGF_NODEFAULT),
+    CFG_STR("lb-method",                   "rtt",        CFGF_NONE),
+    CFG_SEC("headers",                     headers_opts, CFGF_NODEFAULT),
+    CFG_INT_LIST("upstream-read-timeout",  NULL,         CFGF_NODEFAULT),
+    CFG_INT_LIST("upstream-write-timeout", NULL,         CFGF_NODEFAULT),
+    CFG_BOOL("passthrough",                cfg_false,    CFGF_NONE),
+    CFG_BOOL("allow-redirect",             cfg_false,    CFGF_NONE),
+    CFG_END()
+};
 
 static cfg_opt_t vhost_opts[] = {
-    CFG_SEC("ssl",           ssl_opts,          CFGF_NODEFAULT),
-    CFG_SEC("if-uri-match",  rule_exact_opts,   CFGF_TITLE | CFGF_MULTI | CFGF_NO_TITLE_DUPES),
-    CFG_SEC("if-uri-rmatch", rule_regex_opts,   CFGF_TITLE | CFGF_MULTI | CFGF_NO_TITLE_DUPES),
-    CFG_SEC("if-uri-gmatch", rule_glob_opts,    CFGF_TITLE | CFGF_MULTI | CFGF_NO_TITLE_DUPES),
-    CFG_SEC("default",       rule_default_opts, CFGF_NODEFAULT),
-    CFG_STR_LIST("aliases",  NULL,              CFGF_NONE),
-    CFG_SEC("logging",       logging_opts,      CFGF_NODEFAULT),
-    CFG_SEC("headers",       headers_opts,      CFGF_NODEFAULT),
+    CFG_SEC("ssl",          ssl_opts,     CFGF_NODEFAULT),
+/*
+ *    CFG_SEC("if-uri-match",  rule_exact_opts,   CFGF_TITLE | CFGF_MULTI | CFGF_NO_TITLE_DUPES),
+ *    CFG_SEC("if-uri-rmatch", rule_regex_opts,   CFGF_TITLE | CFGF_MULTI | CFGF_NO_TITLE_DUPES),
+ *    CFG_SEC("if-uri-gmatch", rule_glob_opts,    CFGF_TITLE | CFGF_MULTI | CFGF_NO_TITLE_DUPES),
+ *    CFG_SEC("default",       rule_default_opts, CFGF_NODEFAULT),
+ */
+    CFG_STR_LIST("aliases", NULL,         CFGF_NONE),
+    CFG_SEC("logging",      logging_opts, CFGF_NODEFAULT),
+    CFG_SEC("headers",      headers_opts, CFGF_NODEFAULT),
+    CFG_SEC("rule",         rule_opts,    CFGF_TITLE | CFGF_MULTI | CFGF_NO_TITLE_DUPES),
     CFG_END()
 };
 
@@ -765,18 +784,29 @@ headers_cfg_parse(cfg_t * cfg) {
 rule_cfg_t *
 rule_cfg_parse(cfg_t * cfg) {
     rule_cfg_t * rcfg;
+    const char * rname;
     int          i;
 
     assert(cfg != NULL);
 
-    rcfg       = rule_cfg_new();
+    rname = cfg_title(cfg);
+    assert(rname != NULL);
+
+    rcfg  = rule_cfg_new();
     assert(cfg != NULL);
 
-    rcfg->type = cfg_getint(cfg, "type");
-
-    if (cfg_title(cfg)) {
-	/* NULL title means we have hit the default rule */
-        rcfg->matchstr = strdup(cfg_title(cfg));
+    if (cfg_getstr(cfg, "uri-match")) {
+        rcfg->type     = rule_type_exact;
+        rcfg->matchstr = strdup(cfg_getstr(cfg, "uri-match"));
+    } else if (cfg_getstr(cfg, "uri-gmatch")) {
+        rcfg->type     = rule_type_glob;
+        rcfg->matchstr = strdup(cfg_getstr(cfg, "uri-gmatch"));
+    } else if (cfg_getstr(cfg, "uri-rmatch")) {
+        rcfg->type     = rule_type_regex;
+        rcfg->matchstr = strdup(cfg_getstr(cfg, "uri-rmatch"));
+    } else {
+        fprintf(stderr, "Rule %s has no match statement!\n", rname);
+        exit(EXIT_FAILURE);
     }
 
     rcfg->lb_method      = lbstr_to_lbtype(cfg_getstr(cfg, "lb-method"));
@@ -887,6 +917,7 @@ vhost_cfg_parse(cfg_t * cfg) {
     vcfg->server_name = strdup(cfg_title(cfg));
     vcfg->ssl_cfg     = ssl_cfg_parse(cfg_getsec(cfg, "ssl"));
 
+#if 0
     /*
      * *if we find a default rule, we must make that the very first since this
      * should be processed after all other rules. This is due to the fact that
@@ -914,6 +945,19 @@ vhost_cfg_parse(cfg_t * cfg) {
 
     res = parse_rule_type_and_append(vcfg, cfg, "if-uri-gmatch");
     assert(res >= 0);
+#endif
+
+    for (i = 0; i < cfg_size(cfg, "rule"); i++) {
+        lztq_elem  * elem;
+        rule_cfg_t * rule;
+
+        if (!(rule = rule_cfg_parse(cfg_getnsec(cfg, "rule", i)))) {
+            return NULL;
+        }
+
+        elem = lztq_append(vcfg->rule_cfgs, rule, sizeof(rule), rule_cfg_free);
+        assert(elem != NULL);
+    }
 
     for (i = 0; i < cfg_size(cfg, "aliases"); i++) {
         lztq_elem * elem;

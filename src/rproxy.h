@@ -33,7 +33,7 @@
 
 #if EVHTP_VERSION_MAJOR <= 1
 #if EVHTP_VERSION_MINOR <= 0
-#if EVHTP_VERSION_PATCH <  0
+#if EVHTP_VERSION_PATCH < 0
 #error RProxy requires libevhtp v1.0.0 or greater
 #endif
 #endif
@@ -85,15 +85,16 @@ struct logger_cfg {
 };
 
 struct rule_cfg {
-    rule_type       type;        /**< what type of rule this is (regex/exact/glob) */
-    lb_method       lb_method;   /**< method of load-balacinging (defaults to RTT) */
-    char          * matchstr;    /**< the uri to match on */
-    headers_cfg_t * headers;     /**< headers which are added to the backend request */
-    lztq          * downstreams; /**< list of downstream names (as supplied by downstream_cfg_t->name */
-    logger_cfg_t  * req_log;     /**< request logging config */
-    logger_cfg_t  * err_log;     /**< error logging config */
-    bool            passthrough;
-    bool            allow_redirect;
+    char          * name;           /**< the name of the rule */
+    rule_type       type;           /**< what type of rule this is (regex/exact/glob) */
+    lb_method       lb_method;      /**< method of load-balacinging (defaults to RTT) */
+    char          * matchstr;       /**< the uri to match on */
+    headers_cfg_t * headers;        /**< headers which are added to the backend request */
+    lztq          * downstreams;    /**< list of downstream names (as supplied by downstream_cfg_t->name */
+    logger_cfg_t  * req_log;        /**< request logging config */
+    logger_cfg_t  * err_log;        /**< error logging config */
+    bool            passthrough;    /**< if set to true, a pipe between the upstream and downstream is established */
+    bool            allow_redirect; /**< if true, the downstream can send a redirect to connect to a different downstream */
     int             has_up_read_timeout;
     int             has_up_write_timeout;
     struct timeval  up_read_timeout;
