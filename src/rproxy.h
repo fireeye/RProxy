@@ -221,6 +221,7 @@ enum logger_argtype {
     logger_argtype_us_sport,
     logger_argtype_us_hdrval,
     logger_argtype_ds_hdrval,
+    logger_argtype_rule,
     logger_argtype_printable
 };
 

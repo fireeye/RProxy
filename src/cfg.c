@@ -85,45 +85,6 @@ static cfg_opt_t headers_opts[] = {
     CFG_END()
 };
 
-#if 0
-/* uri match options all share a commen set of configuration options, the only
- * difference is the hidden 'match-type' option is set per cfg_opt_t
- */
-#define CFG_URI_MATCH_OPTS()                                      \
-    CFG_STR_LIST("downstreams", NULL, CFGF_NODEFAULT),            \
-    CFG_STR("lb-method", "rtt", CFGF_NONE),                       \
-    CFG_STR("rewrite", NULL, CFGF_NONE),                          \
-    CFG_SEC("headers", headers_opts, CFGF_NODEFAULT),             \
-    CFG_INT_LIST("upstream-read-timeout", NULL, CFGF_NODEFAULT),  \
-    CFG_INT_LIST("upstream-write-timeout", NULL, CFGF_NODEFAULT), \
-    CFG_BOOL("passthrough", cfg_false, CFGF_NONE),                \
-    CFG_BOOL("allow-redirect", cfg_false, CFGF_NONE)
-
-static cfg_opt_t rule_exact_opts[] = {
-    CFG_INT("type",       rule_type_exact, CFGF_NONE),
-    CFG_URI_MATCH_OPTS(),
-    CFG_END()
-};
-
-static cfg_opt_t rule_regex_opts[] = {
-    CFG_INT("type",       rule_type_regex, CFGF_NONE),
-    CFG_URI_MATCH_OPTS(),
-    CFG_END()
-};
-
-static cfg_opt_t rule_glob_opts[] = {
-    CFG_INT("type",       rule_type_glob, CFGF_NONE),
-    CFG_URI_MATCH_OPTS(),
-    CFG_END()
-};
-
-static cfg_opt_t rule_default_opts[] = {
-    CFG_INT("type",       rule_type_default, CFGF_NONE),
-    CFG_URI_MATCH_OPTS(),
-    CFG_END()
-};
-#endif
-
 static cfg_opt_t rule_opts[] = {
     CFG_STR("uri-match",                   NULL,         CFGF_NODEFAULT),
     CFG_STR("uri-gmatch",                  NULL,         CFGF_NODEFAULT),
@@ -140,12 +101,6 @@ static cfg_opt_t rule_opts[] = {
 
 static cfg_opt_t vhost_opts[] = {
     CFG_SEC("ssl",          ssl_opts,     CFGF_NODEFAULT),
-/*
- *    CFG_SEC("if-uri-match",  rule_exact_opts,   CFGF_TITLE | CFGF_MULTI | CFGF_NO_TITLE_DUPES),
- *    CFG_SEC("if-uri-rmatch", rule_regex_opts,   CFGF_TITLE | CFGF_MULTI | CFGF_NO_TITLE_DUPES),
- *    CFG_SEC("if-uri-gmatch", rule_glob_opts,    CFGF_TITLE | CFGF_MULTI | CFGF_NO_TITLE_DUPES),
- *    CFG_SEC("default",       rule_default_opts, CFGF_NODEFAULT),
- */
     CFG_STR_LIST("aliases", NULL,         CFGF_NONE),
     CFG_SEC("logging",      logging_opts, CFGF_NODEFAULT),
     CFG_SEC("headers",      headers_opts, CFGF_NODEFAULT),
@@ -789,11 +744,14 @@ rule_cfg_parse(cfg_t * cfg) {
 
     assert(cfg != NULL);
 
-    rname = cfg_title(cfg);
+    rname      = cfg_title(cfg);
     assert(rname != NULL);
 
-    rcfg  = rule_cfg_new();
+    rcfg       = rule_cfg_new();
     assert(cfg != NULL);
+
+    rcfg->name = strdup(rname);
+    assert(rcfg->name != NULL);
 
     if (cfg_getstr(cfg, "uri-match")) {
         rcfg->type     = rule_type_exact;
@@ -873,33 +831,6 @@ downstream_cfg_parse(cfg_t * cfg) {
     return dscfg;
 }
 
-static int
-parse_rule_type_and_append(vhost_cfg_t * vhost, cfg_t * cfg, const char * name) {
-    lztq * list;
-    int    i;
-
-    assert(vhost != NULL);
-    assert(cfg != NULL);
-    assert(name != NULL);
-
-    list = vhost->rule_cfgs;
-    assert(list != NULL);
-
-    for (i = 0; i < cfg_size(cfg, name); i++) {
-        lztq_elem  * elem;
-        rule_cfg_t * rule;
-
-        if (!(rule = rule_cfg_parse(cfg_getnsec(cfg, name, i)))) {
-            return -1;
-        }
-
-        elem = lztq_append(list, rule, sizeof(rule), rule_cfg_free);
-        assert(elem != NULL);
-    }
-
-    return i;
-}
-
 vhost_cfg_t *
 vhost_cfg_parse(cfg_t * cfg) {
     vhost_cfg_t * vcfg;
@@ -916,36 +847,6 @@ vhost_cfg_parse(cfg_t * cfg) {
 
     vcfg->server_name = strdup(cfg_title(cfg));
     vcfg->ssl_cfg     = ssl_cfg_parse(cfg_getsec(cfg, "ssl"));
-
-#if 0
-    /*
-     * *if we find a default rule, we must make that the very first since this
-     * should be processed after all other rules. This is due to the fact that
-     * evhtp processes requests via a linked list instead of a tailq; thus it
-     * reverses order.
-     */
-
-    if ((default_rule_cfg = cfg_getsec(cfg, "default"))) {
-        rule_cfg_t * default_rule;
-        lztq_elem  * elem;
-
-        default_rule = rule_cfg_parse(default_rule_cfg);
-        assert(default_rule != NULL);
-
-        elem         = lztq_append(vcfg->rule_cfgs, default_rule,
-                                   sizeof(default_rule), rule_cfg_free);
-        assert(elem != NULL);
-    }
-
-    res = parse_rule_type_and_append(vcfg, cfg, "if-uri-match");
-    assert(res >= 0);
-
-    res = parse_rule_type_and_append(vcfg, cfg, "if-uri-rmatch");
-    assert(res >= 0);
-
-    res = parse_rule_type_and_append(vcfg, cfg, "if-uri-gmatch");
-    assert(res >= 0);
-#endif
 
     for (i = 0; i < cfg_size(cfg, "rule"); i++) {
         lztq_elem  * elem;

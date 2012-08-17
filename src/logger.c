@@ -41,6 +41,7 @@ struct {
     { logger_argtype_host,      "{HOST}"     },
     { logger_argtype_us_hdrval, "{US_HDR}:"  },
     { logger_argtype_ds_hdrval, "{DS_HDR}:"  },
+    { logger_argtype_rule,      "{RULE}"     },
     { logger_argtype_printable, NULL         },
 };
 
@@ -85,6 +86,13 @@ logger_log_request_tostr(logger_t * logger, request_t * request, evbuf_t * buf) 
 
     TAILQ_FOREACH(arg, &logger->args, next) {
         switch (arg->type) {
+            case logger_argtype_rule:
+                if (request->rule && request->rule->config && request->rule->config->name) {
+                    evbuffer_add_printf(buf, "%s", request->rule->config->name);
+                } else {
+                    evbuffer_add(buf, "-", 1);
+                }
+                break;
             case logger_argtype_us_hdrval:
                 if (arg->data == NULL) {
                     evbuffer_add(buf, "-", 1);
