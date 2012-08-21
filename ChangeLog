@@ -1,3 +1,10 @@
+v2.0.4
+ o Error on invalid rule pattern, log source port on set_idle. (b7ecd58 Mark Ellzey)
+ o Rule configuration directive changes. (21b6191 Mark Ellzey)
+ o Fix memoryleak in log_error_request. (1849bcf Mark Ellzey)
+ o Added {RULE} logging argument. (6a77ae9 Mark Ellzey)
+ o Fix smoke tests for new rule configuration. (f130c8e Mark Ellzey)
+
 v2.0.3
  o Added a "default" rule type. (934bb6d Mark Ellzey)
  o Logging heiarchy server -> vhost -> rule (6b2de9c Mark Ellzey)
