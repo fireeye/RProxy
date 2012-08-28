@@ -20,22 +20,24 @@
 
 #include "rproxy.h"
 
+#define DEFAULT_CIPHERS "ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-RC4-SHA:ECDHE-RSA-AES128-SHA:RC4-SHA:RC4-MD5:ECDHE-RSA-AES256-SHA:AES256-SHA:ECDHE-RSA-DES-CBC3-SHA:DES-CBC3-SHA:AES128-SHA"
+
 static cfg_opt_t ssl_opts[] = {
-    CFG_BOOL("enabled",           cfg_false,                   CFGF_NONE),
-    CFG_STR_LIST("protocols-on",  "{ALL}",                     CFGF_NONE),
-    CFG_STR_LIST("protocols-off", NULL,                        CFGF_NONE),
-    CFG_STR("cert",               NULL,                        CFGF_NONE),
-    CFG_STR("key",                NULL,                        CFGF_NONE),
-    CFG_STR("ca",                 NULL,                        CFGF_NONE),
-    CFG_STR("capath",             NULL,                        CFGF_NONE),
-    CFG_STR("ciphers",            "RC4+RSA:HIGH:+MEDIUM:+LOW", CFGF_NONE),
-    CFG_BOOL("verify-peer",       cfg_false,                   CFGF_NONE),
-    CFG_BOOL("enforce-peer-cert", cfg_false,                   CFGF_NONE),
-    CFG_INT("verify-depth",       0,                           CFGF_NONE),
-    CFG_INT("context-timeout",    172800,                      CFGF_NONE),
-    CFG_BOOL("cache-enabled",     cfg_true,                    CFGF_NONE),
-    CFG_INT("cache-timeout",      1024,                        CFGF_NONE),
-    CFG_INT("cache-size",         65535,                       CFGF_NONE),
+    CFG_BOOL("enabled",           cfg_false,       CFGF_NONE),
+    CFG_STR_LIST("protocols-on",  "{ALL}",         CFGF_NONE),
+    CFG_STR_LIST("protocols-off", NULL,            CFGF_NONE),
+    CFG_STR("cert",               NULL,            CFGF_NONE),
+    CFG_STR("key",                NULL,            CFGF_NONE),
+    CFG_STR("ca",                 NULL,            CFGF_NONE),
+    CFG_STR("capath",             NULL,            CFGF_NONE),
+    CFG_STR("ciphers",            DEFAULT_CIPHERS, CFGF_NONE),
+    CFG_BOOL("verify-peer",       cfg_false,       CFGF_NONE),
+    CFG_BOOL("enforce-peer-cert", cfg_false,       CFGF_NONE),
+    CFG_INT("verify-depth",       0,               CFGF_NONE),
+    CFG_INT("context-timeout",    172800,          CFGF_NONE),
+    CFG_BOOL("cache-enabled",     cfg_true,        CFGF_NONE),
+    CFG_INT("cache-timeout",      1024,            CFGF_NONE),
+    CFG_INT("cache-size",         65535,           CFGF_NONE),
     CFG_END()
 };
 
