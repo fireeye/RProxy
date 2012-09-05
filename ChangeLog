@@ -1,3 +1,7 @@
+v2.0.5
+ o default ciphers from google defaults (2305454 Mark Ellzey)
+ o Fixed race bug when odd upstream errors happen. (46cfc9e Mark Ellzey)
+
 v2.0.4
  o Error on invalid rule pattern, log source port on set_idle. (b7ecd58 Mark Ellzey)
  o Rule configuration directive changes. (21b6191 Mark Ellzey)
