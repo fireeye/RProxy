@@ -816,8 +816,8 @@ map_vhost_rules_to_downstreams(lztq_elem * elem, void * arg) {
 
         if (!(ds = downstream_find_by_name(rproxy->downstreams, ds_name))) {
             /* could not find a downstream_t which has this name! */
-	    fprintf(stderr, "Could not find downstream named '%s!\n", ds_name);
-	    exit(EXIT_FAILURE);
+            fprintf(stderr, "Could not find downstream named '%s!\n", ds_name);
+            exit(EXIT_FAILURE);
         }
 
         nelem          = lztq_append(rule->downstreams, ds, sizeof(ds), NULL);
@@ -1002,6 +1002,16 @@ upstream_request_start(evhtp_request_t * up_req, const char * hostname, void * a
     if (!(rule = find_rule_from_cfg(rule_cfg, rproxy->rules))) {
         return EVHTP_RES_FATAL;
     }
+
+    if (lztq_size(rule_cfg->downstreams) == 0) {
+        /* no downstreams configured for this request, so we 404 this request */
+        logger_log(rule->err_log, lzlog_err,
+                   "no downstreams configured for rule %s (query %s)",
+                   rule_cfg->name, up_req->uri->path->full);
+        evhtp_send_reply(up_req, EVHTP_RES_NOTFOUND);
+        return EVHTP_RES_ERROR;
+    }
+
 
     serv_cfg = rproxy->server_cfg;
     assert(serv_cfg != NULL);
