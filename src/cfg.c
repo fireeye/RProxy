@@ -44,7 +44,7 @@ static cfg_opt_t ssl_opts[] = {
 static cfg_opt_t log_opts[] = {
     CFG_BOOL("enabled", cfg_false,                   CFGF_NONE),
     CFG_STR("output",   "file:/dev/stdout",          CFGF_NONE),
-    CFG_STR("level",    "crit",                      CFGF_NONE),
+    CFG_STR("level",    "error",                     CFGF_NONE),
     CFG_STR("format",   "{SRC} {HOST} {URI} {HOST}", CFGF_NONE),
     CFG_END()
 };
