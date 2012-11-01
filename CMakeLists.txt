@@ -60,6 +60,7 @@ set (SYS_LIBS
 
 if (APPLE)
 	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-deprecated-declarations")
+	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -D__APPLE__")
 endif(APPLE)
 
 if (NOT APPLE)

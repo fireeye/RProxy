@@ -28,6 +28,7 @@ struct log {
     char          * ident;
     int             opts;
     lzlog_level     level;
+    lzlog_type      type;
     pthread_mutex_t mutex;
 };
 
@@ -48,6 +49,82 @@ static char * _level_str[] = {
     "DEBUG",
     NULL
 };
+
+struct {
+    int          facility;
+    const char * str;
+} _facility_strmap[] = {
+    { LOG_KERN,     "kern"     },
+    { LOG_USER,     "user"     },
+    { LOG_MAIL,     "mail"     },
+    { LOG_DAEMON,   "daemon"   },
+    { LOG_AUTH,     "auth"     },
+    { LOG_SYSLOG,   "syslog"   },
+    { LOG_LPR,      "lptr"     },
+    { LOG_NEWS,     "news"     },
+    { LOG_UUCP,     "uucp"     },
+    { LOG_CRON,     "cron"     },
+    { LOG_AUTHPRIV, "authpriv" },
+    { LOG_FTP,      "ftp"      },
+    { LOG_LOCAL0,   "local0"   },
+    { LOG_LOCAL1,   "local1"   },
+    { LOG_LOCAL2,   "local2"   },
+    { LOG_LOCAL3,   "local3"   },
+    { LOG_LOCAL4,   "local4"   },
+    { LOG_LOCAL5,   "local5"   },
+    { LOG_LOCAL6,   "local6"   },
+    { LOG_LOCAL7,   "local7"   },
+    { -1,           NULL       }
+};
+
+struct {
+    lzlog_level  level;
+    const char * str;
+} _level_strmap[] = {
+    { lzlog_emerg,  "emerg"  },
+    { lzlog_alert,  "alert"  },
+    { lzlog_crit,   "crit"   },
+    { lzlog_err,    "err"    },
+    { lzlog_warn,   "warn"   },
+    { lzlog_notice, "notice" },
+    { lzlog_info,   "info"   },
+    { lzlog_debug,  "debug"  },
+    { -1,           NULL     }
+};
+
+int
+lzlog_facilitystr_to_facility(const char * str) {
+    int i;
+
+    if (str == NULL) {
+        return -1;
+    }
+
+    for (i = 0; _facility_strmap[i].str; i++) {
+        if (!strcasecmp(_facility_strmap[i].str, str)) {
+            return _facility_strmap[i].facility;
+        }
+    }
+
+    return -1;
+}
+
+lzlog_level
+lzlog_levelstr_to_level(const char * str) {
+    int i;
+
+    if (str == NULL) {
+        return -1;
+    }
+
+    for (i = 0; _level_strmap[i].str; i++) {
+        if (!strcasecmp(_level_strmap[i].str, str)) {
+            return _level_strmap[i].level;
+        }
+    }
+
+    return -1;
+}
 
 void
 lzlog_vprintf(lzlog * log, lzlog_level level, const char * fmt, va_list ap) {
@@ -83,7 +160,7 @@ lzlog_write(lzlog * log, lzlog_level level, const char * fmt, ...) {
     va_end(ap);
 }
 
-lzlog *
+static lzlog *
 lzlog_new(lzlog_vtbl * vtbl, const char * ident, int opts) {
     lzlog * log;
 
@@ -107,7 +184,7 @@ lzlog_new(lzlog_vtbl * vtbl, const char * ident, int opts) {
 }
 
 void
-log_free(lzlog * log) {
+lzlog_free(lzlog * log) {
     if (!log) {
         return;
     }
@@ -132,6 +209,11 @@ lzlog_set_level(lzlog * log, lzlog_level level) {
     }
 
     log->level = level;
+}
+
+lzlog_type
+lzlog_get_type(lzlog * log) {
+    return log->type;
 }
 
 static char *
@@ -274,7 +356,11 @@ static lzlog_vtbl _syslzlog_vtbl = {
 
 lzlog *
 lzlog_syslog_new(const char * ident, int opts, int facility) {
-    int syslog_opts = 0;
+#ifdef __APPLE__
+    return lzlog_asl_new(ident, opts, facility);
+#endif
+    int     syslog_opts = 0;
+    lzlog * log;
 
     if (opts & LZLOG_OPT_WPID) {
         syslog_opts |= LOG_PID;
@@ -282,7 +368,10 @@ lzlog_syslog_new(const char * ident, int opts, int facility) {
 
     openlog(ident, syslog_opts, facility);
 
-    return lzlog_new(&_syslzlog_vtbl, ident, opts);
+    log       = lzlog_new(&_syslzlog_vtbl, ident, opts);
+    log->type = lzlog_syslog;
+
+    return log;
 }
 
 struct _log_file {
@@ -334,13 +423,13 @@ lzlog *
 lzlog_file_new(const char * file, const char * ident, int opts) {
     lzlog            * result;
     struct _log_file * lfile;
-    const char       * filename;
 
     if (!(result = lzlog_new(&_file_vtbl, ident, opts))) {
         return NULL;
     }
 
-    lfile = (struct _log_file *)result;
+    result->type = lzlog_file;
+    lfile        = (struct _log_file *)result;
 
     if (!(lfile->file = fopen(file, "a+"))) {
         return NULL;
@@ -349,3 +438,226 @@ lzlog_file_new(const char * file, const char * ident, int opts) {
     return result;
 }
 
+lzlog *
+lzlog_from_template(const char * template, const char * ident, int opts) {
+    char      * scheme;
+    char      * path;
+    char      * levelstr;
+    char      * template_cpy;
+    lzlog_level level;
+    lzlog     * log;
+
+    if (template == NULL) {
+        return NULL;
+    }
+
+    template_cpy = strdup(template);
+
+    /*
+     * templates are as follows:
+     *
+     * <scheme>:<filename|syslog_facility>#<max_loglevel>
+     */
+
+    scheme       = strtok(template_cpy, ":");
+    path         = strtok(NULL, ":");
+    levelstr     = strtok(path, "#");
+    levelstr     = strtok(NULL, "#");
+
+    if (!scheme || !path) {
+        free(template_cpy);
+        return NULL;
+    }
+
+    if (!strcasecmp(scheme, "syslog")) {
+        int facility;
+
+        if (!(facility = lzlog_facilitystr_to_facility(path))) {
+            free(template_cpy);
+            return NULL;
+        }
+
+        log = lzlog_syslog_new(ident, opts, facility);
+    } else if (!strcasecmp(scheme, "file")) {
+        log = lzlog_file_new(path, ident, opts);
+    } else {
+        free(template_cpy);
+        return NULL;
+    }
+
+    if (levelstr) {
+        level = lzlog_levelstr_to_level(levelstr);
+    } else {
+        level = lzlog_notice;
+    }
+
+    lzlog_set_level(log, level);
+
+    free(template_cpy);
+    return log;
+} /* lzlog_from_template */
+
+#ifdef __APPLE__
+#include <asl.h>
+
+const char *
+asl_syslog_faciliy_num_to_name(int n) {
+    if (n < 0) {
+        return NULL;
+    }
+
+    if (n == LOG_AUTH) {
+        return "auth";
+    }
+    if (n == LOG_AUTHPRIV) {
+        return "authpriv";
+    }
+    if (n == LOG_CRON) {
+        return "cron";
+    }
+    if (n == LOG_DAEMON) {
+        return "daemon";
+    }
+    if (n == LOG_FTP) {
+        return "ftp";
+    }
+    if (n == LOG_INSTALL) {
+        return "install";
+    }
+    if (n == LOG_KERN) {
+        return "kern";
+    }
+    if (n == LOG_LPR) {
+        return "lpr";
+    }
+    if (n == LOG_MAIL) {
+        return "mail";
+    }
+    if (n == LOG_NETINFO) {
+        return "netinfo";
+    }
+    if (n == LOG_REMOTEAUTH) {
+        return "remoteauth";
+    }
+    if (n == LOG_NEWS) {
+        return "news";
+    }
+    if (n == LOG_AUTH) {
+        return "security";
+    }
+    if (n == LOG_SYSLOG) {
+        return "syslog";
+    }
+    if (n == LOG_USER) {
+        return "user";
+    }
+    if (n == LOG_UUCP) {
+        return "uucp";
+    }
+    if (n == LOG_LOCAL0) {
+        return "local0";
+    }
+    if (n == LOG_LOCAL1) {
+        return "local1";
+    }
+    if (n == LOG_LOCAL2) {
+        return "local2";
+    }
+    if (n == LOG_LOCAL3) {
+        return "local3";
+    }
+    if (n == LOG_LOCAL4) {
+        return "local4";
+    }
+    if (n == LOG_LOCAL5) {
+        return "local5";
+    }
+    if (n == LOG_LOCAL6) {
+        return "local6";
+    }
+    if (n == LOG_LOCAL7) {
+        return "local7";
+    }
+    if (n == LOG_LAUNCHD) {
+        return "launchd";
+    }
+
+    return NULL;
+} /* asl_syslog_faciliy_num_to_name */
+
+struct _log_asl {
+    lzlog     parent;
+    char    * facility;
+    aslclient asl_f;
+};
+
+static void
+_asl_print(lzlog * log, lzlog_level level, const char * fmt, va_list ap) {
+    aslmsg            facmsg;
+    int               priority = 0;
+    struct _log_asl * this     = (struct _log_asl *)log;
+
+    switch (level) {
+        case lzlog_emerg:
+            priority = ASL_LEVEL_EMERG;
+            break;
+        case lzlog_alert:
+            priority = ASL_LEVEL_ALERT;
+            break;
+        case lzlog_crit:
+            priority = ASL_LEVEL_CRIT;
+            break;
+        case lzlog_err:
+            priority = ASL_LEVEL_ERR;
+            break;
+        case lzlog_warn:
+            priority = ASL_LEVEL_WARNING;
+            break;
+        case lzlog_notice:
+            priority = ASL_LEVEL_NOTICE;
+            break;
+        case lzlog_info:
+            priority = ASL_LEVEL_INFO;
+            break;
+        case lzlog_debug:
+            priority = ASL_LEVEL_DEBUG;
+            break;
+        default:
+            priority = ASL_LEVEL_ERR;
+            break;
+    } /* switch */
+
+    facmsg = asl_new(ASL_TYPE_MSG);
+
+    asl_set(facmsg, ASL_KEY_FACILITY, this->facility);
+    asl_vlog(this->asl_f, facmsg, priority, fmt, ap);
+    asl_free(facmsg);
+}     /* _asl_print */
+
+static lzlog_vtbl _asl_vtbl = {
+    sizeof(struct _log_asl),
+    NULL,
+    _asl_print
+};
+
+lzlog *
+lzlog_asl_new(const char * ident, int opts, int facility) {
+    lzlog           * result;
+    struct _log_asl * lasl;
+    const char      * facility_str =
+        asl_syslog_faciliy_num_to_name(facility);
+
+    if (!(result = lzlog_new(&_asl_vtbl, ident, opts))) {
+        return NULL;
+    }
+
+    result->type   = lzlog_asl;
+    lasl           = (struct _log_asl *)result;
+
+    lasl->asl_f    = asl_open(ident, facility_str, 0);
+    lasl->facility = strdup(facility_str);
+
+    return result;
+}
+
+#endif

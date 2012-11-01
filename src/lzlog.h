@@ -35,6 +35,12 @@
 struct lzlog;
 struct lzlog_vtbl;
 
+enum lzlog_type {
+    lzlog_file = 0,
+    lzlog_syslog,
+    lzlog_asl
+};
+
 enum lzlog_level {
     lzlog_emerg = 0,
     lzlog_alert,
@@ -48,6 +54,7 @@ enum lzlog_level {
 };
 
 typedef enum lzlog_level lzlog_level;
+typedef enum lzlog_type  lzlog_type;
 typedef struct log       lzlog;
 
 void    lzlog_write(lzlog * log, lzlog_level level, const char * fmt, ...);
@@ -55,8 +62,14 @@ void    lzlog_free(lzlog * log);
 
 lzlog * lzlog_file_new(const char * file, const char * ident, int opts);
 lzlog * lzlog_syslog_new(const char * ident, int opts, int facility);
-
-void    lzlog_set_level(lzlog * log, lzlog_level level);
-
+lzlog * lzlog_from_template(const char * tmplate, const char * ident, int opts);
+#ifdef __APPLE__
+lzlog * lzlog_asl_new(const char * ident, int opts, int facility);
 #endif
 
+void        lzlog_set_level(lzlog * log, lzlog_level level);
+int         lzlog_facilitystr_to_facility(const char * str);
+lzlog_level lzlog_levelstr_to_level(const char * str);
+lzlog_type  lzlog_get_type(lzlog * log);
+
+#endif
