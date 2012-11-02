@@ -1,3 +1,10 @@
+v2.0.6
+ o Log ssl errors. (2e2c647 Mark Ellzey)
+ o Rules with no downstreams configured now return 404 and log. (49d0a03 Mark Ellzey)
+ o Default log level to error. (7c0d840 Mark Ellzey)
+ o Convert \n in x-ssl-certificates to \r\n's. (1d0ad8c Mark Ellzey)
+ o Use ASL logging for OSX instead of syslog. (cb26a3a Mark Ellzey)
+
 v2.0.5
  o default ciphers from google defaults (2305454 Mark Ellzey)
  o Fixed race bug when odd upstream errors happen. (46cfc9e Mark Ellzey)
