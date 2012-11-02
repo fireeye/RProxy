@@ -327,7 +327,11 @@ ssl_cert_tostr(evhtp_ssl_t * ssl) {
 
     for (i = 0; i < raw_cert_len - 1; i++) {
         if (raw_cert_str[i] == '\n') {
-            cert_len++;
+            /*
+             * \n's will be converted to \r\n\t, so we must reserve
+             * enough space for that much data.
+             */
+            cert_len += 2;
         }
     }
 
@@ -336,10 +340,12 @@ ssl_cert_tostr(evhtp_ssl_t * ssl) {
     p        = cert_str;
 
     for (i = 0; i < raw_cert_len - 1; i++) {
-        *p++ = raw_cert_str[i];
-
         if (raw_cert_str[i] == '\n') {
+            *p++ = '\r';
+            *p++ = '\n';
             *p++ = '\t';
+        } else {
+            *p++ = raw_cert_str[i];
         }
     }
 
@@ -347,8 +353,6 @@ ssl_cert_tostr(evhtp_ssl_t * ssl) {
     if (raw_cert_str[i] != '\n') {
         *p++ = raw_cert_str[i];
     }
-
-    /* assert(*p == 0); */
 
     BIO_free(bio);
     X509_free(cert);
@@ -455,11 +459,9 @@ ssl_x509_verifyfn(int ok, X509_STORE_CTX * store) {
         rproxy = evthr_get_aux(connection->thread);
         assert(rproxy != NULL);
 
-#if 0
-        lzlog_write(rproxy->log->log, lzlog_warn,
-                    "[WARN] SSL: verify error:num=%d:%s:depth=%d:%s\n", err,
-                    X509_verify_cert_error_string(err), depth, buf);
-#endif
+        logger_log(rproxy->err_log, lzlog_err,
+                   "SSL: verify error:num=%d:%s:depth=%d:%s", err,
+                   X509_verify_cert_error_string(err), depth, buf);
     }
 
     return ok;
