@@ -187,3 +187,116 @@ util_set_rlimits(int nofiles) {
     return 0;
 } /* rproxy_set_rlimits */
 
+/**
+ * @brief glob/wildcard type pattern matching.
+ *
+ * Note: This code was derived from redis's (v2.6) stringmatchlen() function.
+ *
+ * @param pattern
+ * @param string
+ *
+ * @return
+ */
+int
+util_glob_match(const char * pattern, const char * string) {
+    size_t pat_len;
+    size_t str_len;
+
+    if (!pattern || !string) {
+        return 0;
+    }
+
+    pat_len = strlen(pattern);
+    str_len = strlen(string);
+
+    while (pat_len) {
+        if (pattern[0] == '*') {
+            while (pattern[1] == '*') {
+                pattern++;
+                pat_len--;
+            }
+
+            if (pat_len == 1) {
+                return 1;
+            }
+
+            while (str_len) {
+                if (util_glob_match(pattern + 1, string)) {
+                    return 1;
+                }
+
+                string++;
+                str_len--;
+            }
+
+            return 0;
+        } else {
+            if (pattern[0] != string[0]) {
+                return 0;
+            }
+
+            string++;
+            str_len--;
+        }
+
+        pattern++;
+        pat_len--;
+
+        if (str_len == 0) {
+            while (*pattern == '*') {
+                pattern++;
+                pat_len--;
+            }
+            break;
+        }
+    }
+
+    if (pat_len == 0 && str_len == 0) {
+        return 1;
+    }
+
+    return 0;
+} /* util_glob_match */
+
+static int
+_glob_match_iterfn(lztq_elem * elem, void * arg) {
+    const char * needle;
+    const char * haystack;
+
+    if (!(needle = (const char *)arg)) {
+        return -1;
+    }
+
+    if (!(haystack = (const char *)lztq_elem_data(elem))) {
+        return -1;
+    }
+
+    return util_glob_match(haystack, needle);
+}
+
+/**
+ * @brief iterate over a tailq of strings and attempt to find a wildcard match.
+ *
+ * @param tq a lztq of strings to match against. (haystack)
+ * @param str  the string to compare. (needle)
+ *
+ * @return -1 on errir, 1 on match, 0 on no match.
+ */
+int
+util_glob_match_lztq(lztq * tq, const char * str) {
+    /* if the tailq is empty, we default to allowed */
+    if (tq == NULL || lztq_size(tq) == 0) {
+        return 1;
+    }
+
+    /* since lztq_for_each will break from the loop if the iterator returns
+     * anything but zero, we utilize the result as an indicator as to whether
+     * the wildcard match was sucessful.
+     *
+     * result =  0 == no match
+     * result =  1 == match
+     * result = -1 == matching error
+     */
+    return lztq_for_each(tq, _glob_match_iterfn, (void *)str);
+}
+

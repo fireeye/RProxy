@@ -85,16 +85,17 @@ struct logger_cfg {
 };
 
 struct rule_cfg {
-    char          * name;           /**< the name of the rule */
-    rule_type       type;           /**< what type of rule this is (regex/exact/glob) */
-    lb_method       lb_method;      /**< method of load-balacinging (defaults to RTT) */
-    char          * matchstr;       /**< the uri to match on */
-    headers_cfg_t * headers;        /**< headers which are added to the backend request */
-    lztq          * downstreams;    /**< list of downstream names (as supplied by downstream_cfg_t->name */
-    logger_cfg_t  * req_log;        /**< request logging config */
-    logger_cfg_t  * err_log;        /**< error logging config */
-    bool            passthrough;    /**< if set to true, a pipe between the upstream and downstream is established */
-    bool            allow_redirect; /**< if true, the downstream can send a redirect to connect to a different downstream */
+    char          * name;            /**< the name of the rule */
+    rule_type       type;            /**< what type of rule this is (regex/exact/glob) */
+    lb_method       lb_method;       /**< method of load-balacinging (defaults to RTT) */
+    char          * matchstr;        /**< the uri to match on */
+    headers_cfg_t * headers;         /**< headers which are added to the backend request */
+    lztq          * downstreams;     /**< list of downstream names (as supplied by downstream_cfg_t->name */
+    logger_cfg_t  * req_log;         /**< request logging config */
+    logger_cfg_t  * err_log;         /**< error logging config */
+    bool            passthrough;     /**< if set to true, a pipe between the upstream and downstream is established */
+    bool            allow_redirect;  /**< if true, the downstream can send a redirect to connect to a different downstream */
+    lztq          * redirect_filter; /**< a list of hostnames that redirects are can connect to */
     int             has_up_read_timeout;
     int             has_up_write_timeout;
     struct timeval  up_read_timeout;
@@ -416,6 +417,9 @@ int       util_set_rlimits(int nofiles);
 
 evbuf_t * util_request_to_evbuffer(evhtp_request_t * request);
 int       util_write_header_to_evbuffer(evhtp_header_t * hdr, void * arg);
+
+int       util_glob_match(const char * pattern, const char * string);
+int       util_glob_match_lztq(lztq *, const char *);
 
 
 #endif

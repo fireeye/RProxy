@@ -180,12 +180,17 @@ static int
 proxy_parser_headers_complete(htparser * p) {
     request_t       * request;
     rproxy_t        * rproxy;
+    rule_t          * rule;
     evhtp_request_t * upstream_r;
+    evhtp_res         res_code;
 
     assert(p != NULL);
 
     request = htparser_get_userdata(p);
     assert(request != NULL);
+
+    rule    = request->rule;
+    assert(rule != NULL);
 
     rproxy  = request->rproxy;
     assert(rproxy != NULL);
@@ -200,7 +205,9 @@ proxy_parser_headers_complete(htparser * p) {
         return -1;
     }
 
-    if (htparser_get_status(p) == 377 && request->rule->config->allow_redirect == true) {
+    res_code = htparser_get_status(p);
+
+    if (res_code == 377 && rule->config->allow_redirect == true) {
         /* check for a X-Internal-Redirect header, and if found, we make a new
          * connection to the value of this and send the request that way.
          */
@@ -217,6 +224,26 @@ proxy_parser_headers_complete(htparser * p) {
             char    * host;
             char    * cp;
             uint16_t  port;
+
+            /*
+             * make sure this value of this redirect is allowed if a filter is
+             * present.
+             */
+            if (rule->config->redirect_filter) {
+                if (util_glob_match_lztq(rule->config->redirect_filter, redir_host) != 1) {
+                    /*
+                     * this is not a match, so we remove the x-internal-redirect
+                     * header, set the res code to a 401, and continue the
+                     * processing.
+                     */
+                    res_code = 401;
+                    evhtp_kv_rm_and_free(upstream_r->headers_out,
+                                         evhtp_kvs_find_kv(upstream_r->headers_out,
+                                                           "x-internal-redirect"));
+
+                    goto start_reply;
+                }
+            }
 
             redir_host_cpy = strdup(redir_host);
             assert(redir_host_cpy != NULL);
@@ -305,10 +332,11 @@ proxy_parser_headers_complete(htparser * p) {
         }
     }
 
+start_reply:
     /* downstream headers have been fully parsed, start streaming
      * further data to the upstream
      */
-    evhtp_send_reply_start(upstream_r, htparser_get_status(p));
+    evhtp_send_reply_start(upstream_r, res_code);
 
     if (REQUEST_HAS_ERROR(request)) {
         return -1;
