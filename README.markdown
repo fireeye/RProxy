@@ -345,7 +345,6 @@ TBD
 			key               = server.key
 			ca                = server.ca
 			capath            = ./capath/
-			ciphers           = "eNULL:RC4-SHA"
 			enforce-peer-cert = false
 			verify-peer       = false
 			verify-depth      = 0
