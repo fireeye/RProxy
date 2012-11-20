@@ -29,7 +29,7 @@
 #include "lzq.h"
 #include "lzlog.h"
 
-#define RPROXY_VERSION "2.0.7"
+#define RPROXY_VERSION "2.0.8"
 
 #if EVHTP_VERSION_MAJOR <= 1
 #if EVHTP_VERSION_MINOR <= 1
