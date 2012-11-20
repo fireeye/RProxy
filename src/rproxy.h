@@ -164,6 +164,7 @@ struct server_cfg {
     int      num_threads;           /**< number of worker threads to start */
     int      max_pending;           /**< max pending requests before new connections are dropped */
     int      listen_backlog;        /**< listen backlog */
+    size_t   high_watermark;        /**< upstream high-watermark */
 
     struct timeval read_timeout;    /**< time to wait for reading before client is dropped */
     struct timeval write_timeout;   /**< time to wait for writing before client is dropped */
@@ -283,6 +284,7 @@ struct request {
     uint8_t done;                        /**< request fully proxied and completed */
     uint8_t pending;                     /**< request is waiting for a downstream connection to be avail */
     uint8_t hit_highwm;
+    uint8_t hit_upstream_highwm;
     uint8_t reading;
 
     TAILQ_ENTRY(request) next;

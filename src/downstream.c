@@ -1279,6 +1279,21 @@ downstream_connection_readcb(evbev_t * bev, void * arg) {
     evbuf    = bufferevent_get_input(bev);
     assert(evbuf != NULL);
 
+    if (rproxy->server_cfg->high_watermark > 0) {
+        /* if we have a high-watermark configuration for upstream connections
+         * set, and the upstreams output buffer grows over this size, we must
+         * disable the read side of the downstream connection until that buffer
+         * is fully written.
+         *
+         * when the buffer has been fully written, the connection hook
+         * upstream_on_write will enable the read side again.
+         */
+        if (evbuffer_get_length(bufferevent_get_output(request->upstream_bev)) >= rproxy->server_cfg->high_watermark) {
+            request->hit_upstream_highwm = 1;
+            bufferevent_disable(connection->connection, EV_READ);
+        }
+    }
+
     if (rule_cfg->passthrough == true) {
         /* passthrough enabled, just write the data from the downstream back to
          * the upstream.
