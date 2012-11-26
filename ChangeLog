@@ -1,3 +1,11 @@
+v2.0.8
+ o Make @b6n not mad at me with default ciphers. (4911743 Mark Ellzey)
+ o Added upstream high-watermark logic. (0c8064d Mark Ellzey)
+ o Require libevhtp 1.1.7 (7d43a20 Mark Ellzey)
+
+v2.0.7
+ o Added redirect host filtering. (4ef9155 Mark Ellzey)
+
 v2.0.6
  o Log ssl errors. (2e2c647 Mark Ellzey)
  o Rules with no downstreams configured now return 404 and log. (49d0a03 Mark Ellzey)

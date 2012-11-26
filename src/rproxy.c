@@ -223,6 +223,25 @@ append_x_headers(headers_cfg_t * headers_cfg, evhtp_request_t * upstream_req) {
     return 0;
 } /* append_x_headers */
 
+evhtp_res
+upstream_on_write(evhtp_connection_t * conn, void * args) {
+    request_t * ds_req;
+
+    ds_req = args;
+    assert(ds_req != NULL);
+
+    if (ds_req->hit_upstream_highwm) {
+        /* upstream hit a high watermark for its write buffer, but now the
+         * buffer has been fully flushed, so we can enable the read side of the
+         * downstream again.
+         */
+        bufferevent_enable(ds_req->downstream_conn->connection, EV_READ);
+        ds_req->hit_upstream_highwm = 0;
+    }
+
+    return EVHTP_RES_OK;
+}
+
 /**
  * @brief data was read from an upstream connection, pass it down to the
  * downstream.
@@ -1080,6 +1099,9 @@ upstream_request_start(evhtp_request_t * up_req, const char * hostname, void * a
     /* call this function if the upstream request encounters a socket error */
     evhtp_set_hook(&up_req->hooks, evhtp_hook_on_error,
                    upstream_error, ds_req);
+
+    evhtp_set_hook(&up_req->conn->hooks, evhtp_hook_on_write,
+                   upstream_on_write, ds_req);
 
     /* insert this request into our pending queue and signal processor event */
     TAILQ_INSERT_TAIL(&rproxy->pending, ds_req, next);

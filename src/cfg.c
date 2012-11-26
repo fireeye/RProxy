@@ -98,6 +98,7 @@ static cfg_opt_t rule_opts[] = {
     CFG_INT_LIST("upstream-write-timeout", NULL,         CFGF_NODEFAULT),
     CFG_BOOL("passthrough",                cfg_false,    CFGF_NONE),
     CFG_BOOL("allow-redirect",             cfg_false,    CFGF_NONE),
+    CFG_STR_LIST("redirect-filter",        NULL,         CFGF_NODEFAULT),
     CFG_END()
 };
 
@@ -117,6 +118,7 @@ static cfg_opt_t server_opts[] = {
     CFG_INT_LIST("read-timeout",    "{ 0, 0 }",      CFGF_NONE),
     CFG_INT_LIST("write-timeout",   "{ 0, 0 }",      CFGF_NONE),
     CFG_INT_LIST("pending-timeout", "{ 0, 0 }",      CFGF_NONE),
+    CFG_INT("high-watermark",       0,               CFGF_NONE),
     CFG_INT("max-pending",          0,               CFGF_NONE),
     CFG_INT("backlog",              1024,            CFGF_NONE),
     CFG_SEC("downstream",           downstream_opts, CFGF_MULTI | CFGF_TITLE | CFGF_NO_TITLE_DUPES),
@@ -797,6 +799,32 @@ rule_cfg_parse(cfg_t * cfg) {
         assert(elem != NULL);
     }
 
+    if (rcfg->allow_redirect != 0 && cfg_size(cfg, "redirect-filter")) {
+        /*
+         * if the redirect option is enabled, optionally an administrator can
+         * add a list of allowed hosts it may communicate with.
+         */
+        int n_filters;
+
+        n_filters = cfg_size(cfg, "redirect-filter");
+        assert(n_filters > 0);
+
+        rcfg->redirect_filter = lztq_new();
+        assert(rcfg->redirect_filter != NULL);
+
+        for (i = 0; i < n_filters; i++) {
+            lztq_elem * elem;
+            char      * host_ent;
+
+            host_ent = strdup(cfg_getnstr(cfg, "redirect-filter", i));
+            assert(host_ent != NULL);
+
+            elem     = lztq_append(rcfg->redirect_filter, host_ent,
+                                   strlen(host_ent), free);
+            assert(elem != NULL);
+        }
+    }
+
     return rcfg;
 } /* rule_cfg_parse */
 
@@ -921,6 +949,7 @@ server_cfg_parse(cfg_t * cfg) {
     scfg->write_timeout.tv_usec   = cfg_getnint(cfg, "write-timeout", 1);
     scfg->pending_timeout.tv_sec  = cfg_getnint(cfg, "pending-timeout", 0);
     scfg->pending_timeout.tv_usec = cfg_getnint(cfg, "pending-timeout", 1);
+    scfg->high_watermark = cfg_getint(cfg, "high-watermark");
 
     if ((log_cfg = cfg_getsec(cfg, "logging"))) {
         scfg->req_log_cfg = logger_cfg_parse(cfg_getsec(log_cfg, "request"));
