@@ -182,6 +182,7 @@ proxy_parser_headers_complete(htparser * p) {
     rproxy_t        * rproxy;
     rule_t          * rule;
     evhtp_request_t * upstream_r;
+    vhost_t         * vhost;
     evhtp_res         res_code;
 
     assert(p != NULL);
@@ -191,6 +192,9 @@ proxy_parser_headers_complete(htparser * p) {
 
     rule    = request->rule;
     assert(rule != NULL);
+
+    vhost   = rule->parent_vhost;
+    assert(vhost != NULL);
 
     rproxy  = request->rproxy;
     assert(rproxy != NULL);
@@ -333,6 +337,15 @@ proxy_parser_headers_complete(htparser * p) {
     }
 
 start_reply:
+    /*
+     * if this vhost has been configured to strip headers from the response, do
+     * so now.
+     */
+    if (vhost->config->strip_hdrs) {
+        util_rm_headers_via_lztq(vhost->config->strip_hdrs,
+                                 upstream_r->headers_out);
+    }
+
     /* downstream headers have been fully parsed, start streaming
      * further data to the upstream
      */

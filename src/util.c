@@ -300,3 +300,39 @@ util_glob_match_lztq(lztq * tq, const char * str) {
     return lztq_for_each(tq, _glob_match_iterfn, (void *)str);
 }
 
+static int
+_rm_headers_iterfn(lztq_elem * elem, void * arg) {
+    evhtp_headers_t * headers;
+    const char      * header_key;
+
+    if (!(headers = (evhtp_headers_t *)arg)) {
+        return -1;
+    }
+
+    if (!(header_key = (const char *)lztq_elem_data(elem))) {
+        return -1;
+    }
+
+    evhtp_kv_rm_and_free(headers, evhtp_kvs_find_kv(headers, header_key));
+
+    return 0;
+}
+
+/**
+ * @brief iterates over a lzq of strings and removes any headers with that
+ *        string.
+ *
+ * @param tq
+ * @param headers
+ *
+ * @return 0 on success, otherwise -1
+ */
+int
+util_rm_headers_via_lztq(lztq * tq, evhtp_headers_t * headers) {
+    if (tq == NULL || headers == NULL) {
+        return 0;
+    }
+
+    return lztq_for_each(tq, _rm_headers_iterfn, (void *)headers);
+}
+

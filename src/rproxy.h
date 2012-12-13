@@ -149,7 +149,8 @@ struct vhost_cfg {
     lztq            * rule_cfgs;    /**< list of rule_cfg_t's */
     lztq            * rules;        /* list of rule_t's */
     char            * server_name;
-    lztq            * aliases;
+    lztq            * aliases;      /**< other hostnames this vhost is associated with */
+    lztq            * strip_hdrs;   /**< headers to strip out from downstream responses */
     logger_cfg_t    * req_log;      /* request logging configuration */
     logger_cfg_t    * err_log;      /* error logging configuration */
     headers_cfg_t   * headers;      /**< headers which are added to the backend request */
@@ -423,6 +424,7 @@ int       util_write_header_to_evbuffer(evhtp_header_t * hdr, void * arg);
 int       util_glob_match(const char * pattern, const char * string);
 int       util_glob_match_lztq(lztq *, const char *);
 
+int       util_rm_headers_via_lztq(lztq * tq, evhtp_headers_t * headers);
 
 #endif
 

@@ -103,11 +103,12 @@ static cfg_opt_t rule_opts[] = {
 };
 
 static cfg_opt_t vhost_opts[] = {
-    CFG_SEC("ssl",          ssl_opts,     CFGF_NODEFAULT),
-    CFG_STR_LIST("aliases", NULL,         CFGF_NONE),
-    CFG_SEC("logging",      logging_opts, CFGF_NODEFAULT),
-    CFG_SEC("headers",      headers_opts, CFGF_NODEFAULT),
-    CFG_SEC("rule",         rule_opts,    CFGF_TITLE | CFGF_MULTI | CFGF_NO_TITLE_DUPES),
+    CFG_SEC("ssl",                ssl_opts,     CFGF_NODEFAULT),
+    CFG_STR_LIST("aliases",       NULL,         CFGF_NONE),
+    CFG_STR_LIST("strip-headers", "{}",         CFGF_NONE),
+    CFG_SEC("logging",            logging_opts, CFGF_NODEFAULT),
+    CFG_SEC("headers",            headers_opts, CFGF_NODEFAULT),
+    CFG_SEC("rule",               rule_opts,    CFGF_TITLE | CFGF_MULTI | CFGF_NO_TITLE_DUPES),
     CFG_END()
 };
 
@@ -293,10 +294,17 @@ vhost_cfg_t *
 vhost_cfg_new(void) {
     vhost_cfg_t * cfg;
 
-    cfg            = calloc(sizeof(vhost_cfg_t), 1);
+    cfg = calloc(sizeof(vhost_cfg_t), 1);
+    assert(cfg != NULL);
+
     cfg->rule_cfgs = lztq_new();
+    assert(cfg->rule_cfgs != NULL);
+
     cfg->rules     = lztq_new();
+    assert(cfg->rules != NULL);
+
     cfg->aliases   = lztq_new();
+    assert(cfg->aliases != NULL);
 
     return cfg;
 }
@@ -903,6 +911,25 @@ vhost_cfg_parse(cfg_t * cfg) {
         assert(elem != NULL);
     }
 
+    if (cfg_size(cfg, "strip-headers")) {
+        vcfg->strip_hdrs = lztq_new();
+        assert(vcfg->strip_hdrs != NULL);
+
+        for (i = 0; i < cfg_size(cfg, "strip-headers"); i++) {
+            lztq_elem * elem;
+            char      * hdr_name;
+
+            assert(cfg_getnstr(cfg, "strip-headers", i) != NULL);
+
+            hdr_name = strdup(cfg_getnstr(cfg, "strip-headers", i));
+            assert(hdr_name != NULL);
+
+            elem     = lztq_append(vcfg->strip_hdrs, hdr_name, strlen(hdr_name), free);
+            assert(elem != NULL);
+        }
+    }
+
+
     log_cfg = cfg_getsec(cfg, "logging");
     hdr_cfg = cfg_getsec(cfg, "headers");
 
@@ -949,7 +976,7 @@ server_cfg_parse(cfg_t * cfg) {
     scfg->write_timeout.tv_usec   = cfg_getnint(cfg, "write-timeout", 1);
     scfg->pending_timeout.tv_sec  = cfg_getnint(cfg, "pending-timeout", 0);
     scfg->pending_timeout.tv_usec = cfg_getnint(cfg, "pending-timeout", 1);
-    scfg->high_watermark = cfg_getint(cfg, "high-watermark");
+    scfg->high_watermark          = cfg_getint(cfg, "high-watermark");
 
     if ((log_cfg = cfg_getsec(cfg, "logging"))) {
         scfg->req_log_cfg = logger_cfg_parse(cfg_getsec(log_cfg, "request"));
