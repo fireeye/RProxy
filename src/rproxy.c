@@ -935,6 +935,7 @@ downstream_pending_timeout(evutil_socket_t fd, short what, void * arg) {
     up_req->keepalive = 0;
 
     evhtp_headers_add_header(up_req->headers_out, evhtp_header_new("Connection", "close", 0, 0));
+    evhtp_request_resume(up_req);
     evhtp_send_reply(up_req, 503);
 
     if (ds_req->rule) {
