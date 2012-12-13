@@ -1,3 +1,8 @@
+v2.0.9
+ o Default logging level is now error. (4c8e275 Mark Ellzey)
+ o Set "downstream down" messages log at level 'info'. (6e7d902 Mark Ellzey)
+ o Add strip-headers config, see commit msg for details. (78a1075 Mark Ellzey)
+
 v2.0.8
  o Make @b6n not mad at me with default ciphers. (4911743 Mark Ellzey)
  o Added upstream high-watermark logic. (0c8064d Mark Ellzey)
