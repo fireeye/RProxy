@@ -707,7 +707,7 @@ downstream_connection_set_down(downstream_c_t * connection) {
     }
 
     if (connection->status != downstream_status_down) {
-        logger_log(downstream->rproxy->err_log, lzlog_err,
+        logger_log(downstream->rproxy->err_log, lzlog_info,
                    "%s(): downstream proxy:%d -> %s:%d is down",
                    __FUNCTION__,
                    connection->sport,
