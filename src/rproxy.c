@@ -980,9 +980,16 @@ upstream_pre_accept(evhtp_connection_t * up_conn, void * arg) {
     return EVHTP_RES_OK;
 }
 
+static evhtp_res
+upstream_dump_request(evhtp_request_t * r, const char * host, void * arg) {
+    evhtp_send_reply(r, EVHTP_RES_NOTFOUND);
+
+    return EVHTP_RES_ERROR;
+}
+
 evhtp_res
 upstream_request_start(evhtp_request_t * up_req, const char * hostname, void * arg) {
-    /* This function is called whenever evhtp has matched a rule on a request.
+    /* This function is called whenever evhtp has matched a hostname on a request.
      *
      * Once the downstream request has been initialized and setup, this function
      * will *NOT* immediately start processing the request. This is because a
@@ -1296,6 +1303,25 @@ add_vhost(lztq_elem * elem, void * arg) {
     /* create an alias for the vhost for each configured alias directive */
     lztq_for_each(vcfg->aliases, add_vhost_name, htp_vhost);
 
+    /* here we add a rule to rule them all. If no rules match, we want to be
+     * able to shut the connection down so it doesn't consume any resources.
+     *
+     * If this is not done, evhtp will just keep consuming input data, and in
+     * the case of a large POST request, memory will be eaten until complete.
+     * This is bad.
+     */
+    {
+        evhtp_callback_t * cb;
+
+        if (!(cb = evhtp_set_glob_cb(htp_vhost, "*", NULL, htp_vhost))) {
+            fprintf(stderr, "Could not alloc callback: %s\n", strerror(errno));
+            exit(EXIT_FAILURE);
+        }
+
+        evhtp_set_hook(&cb->hooks, evhtp_hook_on_hostname,
+                       upstream_dump_request, htp_vhost);
+    }
+
     if (vcfg->ssl_cfg != NULL) {
         /* vhost specific ssl configuration found */
         evhtp_ssl_init(htp_vhost, vcfg->ssl_cfg);
@@ -1306,7 +1332,7 @@ add_vhost(lztq_elem * elem, void * arg) {
     }
 
     return 0;
-}
+} /* add_vhost */
 
 int
 rproxy_init(evbase_t * evbase, rproxy_cfg_t * cfg) {
