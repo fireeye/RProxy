@@ -22,7 +22,12 @@
 
 #define DEFAULT_CIPHERS "ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-RC4-SHA:ECDHE-RSA-AES128-SHA:RC4-SHA:RC4-MD5:ECDHE-RSA-AES256-SHA:AES256-SHA:ECDHE-RSA-DES-CBC3-SHA:DES-CBC3-SHA:AES128-SHA"
 
-static cfg_opt_t ssl_opts[] = {
+/* used to keep track of to-be-needed rlimit information, to be used later to
+ * determine if the system settings can handle what is configured.
+ */
+static rproxy_rusage_t _rusage = { 0, 0, 0 };
+
+static cfg_opt_t       ssl_opts[] = {
     CFG_BOOL("enabled",           cfg_false,       CFGF_NONE),
     CFG_STR_LIST("protocols-on",  "{ALL}",         CFGF_NONE),
     CFG_STR_LIST("protocols-off", NULL,            CFGF_NONE),
@@ -41,7 +46,7 @@ static cfg_opt_t ssl_opts[] = {
     CFG_END()
 };
 
-static cfg_opt_t log_opts[] = {
+static cfg_opt_t       log_opts[] = {
     CFG_BOOL("enabled", cfg_false,                   CFGF_NONE),
     CFG_STR("output",   "file:/dev/stdout",          CFGF_NONE),
     CFG_STR("level",    "error",                     CFGF_NONE),
@@ -49,14 +54,14 @@ static cfg_opt_t log_opts[] = {
     CFG_END()
 };
 
-static cfg_opt_t logging_opts[] = {
+static cfg_opt_t       logging_opts[] = {
     CFG_SEC("request", log_opts, CFGF_NONE),
     CFG_SEC("error",   log_opts, CFGF_NONE),
     CFG_SEC("general", log_opts, CFGF_NONE),
     CFG_END()
 };
 
-static cfg_opt_t downstream_opts[] = {
+static cfg_opt_t       downstream_opts[] = {
     CFG_BOOL("enabled",           cfg_true,       CFGF_NONE),
     CFG_STR("addr",               NULL,           CFGF_NODEFAULT),
     CFG_INT("port",               0,              CFGF_NODEFAULT),
@@ -68,13 +73,13 @@ static cfg_opt_t downstream_opts[] = {
     CFG_END()
 };
 
-static cfg_opt_t x509_ext_opts[] = {
+static cfg_opt_t       x509_ext_opts[] = {
     CFG_STR("name", NULL, CFGF_NONE),
     CFG_STR("oid",  NULL, CFGF_NONE),
     CFG_END()
 };
 
-static cfg_opt_t headers_opts[] = {
+static cfg_opt_t       headers_opts[] = {
     CFG_BOOL("x-forwarded-for",   cfg_true,      CFGF_NONE),
     CFG_BOOL("x-ssl-subject",     cfg_false,     CFGF_NONE),
     CFG_BOOL("x-ssl-issuer",      cfg_false,     CFGF_NONE),
@@ -87,7 +92,7 @@ static cfg_opt_t headers_opts[] = {
     CFG_END()
 };
 
-static cfg_opt_t rule_opts[] = {
+static cfg_opt_t       rule_opts[] = {
     CFG_STR("uri-match",                   NULL,         CFGF_NODEFAULT),
     CFG_STR("uri-gmatch",                  NULL,         CFGF_NODEFAULT),
     CFG_STR("uri-rmatch",                  NULL,         CFGF_NODEFAULT),
@@ -102,7 +107,7 @@ static cfg_opt_t rule_opts[] = {
     CFG_END()
 };
 
-static cfg_opt_t vhost_opts[] = {
+static cfg_opt_t       vhost_opts[] = {
     CFG_SEC("ssl",                ssl_opts,     CFGF_NODEFAULT),
     CFG_STR_LIST("aliases",       NULL,         CFGF_NONE),
     CFG_STR_LIST("strip-headers", "{}",         CFGF_NONE),
@@ -112,7 +117,7 @@ static cfg_opt_t vhost_opts[] = {
     CFG_END()
 };
 
-static cfg_opt_t server_opts[] = {
+static cfg_opt_t       server_opts[] = {
     CFG_STR("addr",                 "127.0.0.1",     CFGF_NONE),
     CFG_INT("port",                 8080,            CFGF_NONE),
     CFG_INT("threads",              4,               CFGF_NONE),
@@ -129,7 +134,7 @@ static cfg_opt_t server_opts[] = {
     CFG_END()
 };
 
-static cfg_opt_t rproxy_opts[] = {
+static cfg_opt_t       rproxy_opts[] = {
     CFG_BOOL("daemonize", cfg_false,   CFGF_NONE),
     CFG_STR("rootdir",    "/tmp",      CFGF_NONE),
     CFG_STR("user",       NULL,        CFGF_NONE),
@@ -866,6 +871,10 @@ downstream_cfg_parse(cfg_t * cfg) {
     dscfg->retry_ival.tv_sec     = cfg_getnint(cfg, "retry", 0);
     dscfg->retry_ival.tv_usec    = cfg_getnint(cfg, "retry", 1);
 
+    if (dscfg->enabled == true) {
+        _rusage.total_num_connections += dscfg->n_connections;
+    }
+
     return dscfg;
 }
 
@@ -1006,6 +1015,9 @@ server_cfg_parse(cfg_t * cfg) {
         assert(elem != NULL);
     }
 
+    _rusage.total_num_threads += scfg->num_threads;
+    _rusage.total_max_pending += scfg->max_pending;
+
     return scfg;
 } /* server_cfg_parse */
 
@@ -1047,8 +1059,11 @@ rproxy_cfg_parse_(cfg_t * cfg) {
         assert(elem != NULL);
     }
 
+    /* set our rusage settings from the global one */
+    memcpy(&rpcfg->rusage, &_rusage, sizeof(rproxy_rusage_t));
+
     return rpcfg;
-}
+} /* rproxy_cfg_parse_ */
 
 rproxy_cfg_t *
 rproxy_cfg_parse(const char * filename) {

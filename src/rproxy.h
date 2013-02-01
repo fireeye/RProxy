@@ -63,6 +63,7 @@ enum logger_type {
     logger_type_syslog
 };
 
+typedef struct rproxy_rusage  rproxy_rusage_t;
 typedef struct rproxy_cfg     rproxy_cfg_t;
 typedef struct rule_cfg       rule_cfg_t;
 typedef struct vhost_cfg      vhost_cfg_t;
@@ -180,18 +181,34 @@ struct server_cfg {
 };
 
 
+
+/**
+ * @brief This is a structure that is filled during the configuration parsing
+ *        stage. The information contains the various resources (file descriptors
+ *        and such) that would be needed for the proxy to run optimally.
+ *
+ *        The idea is to warn the administrator that his system limits
+ *        may impact the performance of the service.
+ */
+struct rproxy_rusage {
+    unsigned int total_num_connections; /**< the total of all downstream connections */
+    unsigned int total_num_threads;     /**< the total threads which will spawn */
+    unsigned int total_max_pending;     /**< the total of configured max-pending connections */
+};
+
 /**
  * @brief main configuration structure.
  */
 struct rproxy_cfg {
-    bool           daemonize;       /**< should proxy run in background */
-    int            mem_trimsz;
-    int            max_nofile;      /**< max number of open file descriptors */
-    char         * rootdir;         /**< root dir to daemonize */
-    char         * user;            /**< user to run as */
-    char         * group;           /**< group to run as */
-    lztq         * servers;         /**< list of server_cfg_t's */
-    logger_cfg_t * log;             /**< generic log configuration */
+    bool            daemonize;      /**< should proxy run in background */
+    int             mem_trimsz;
+    int             max_nofile;     /**< max number of open file descriptors */
+    char          * rootdir;        /**< root dir to daemonize */
+    char          * user;           /**< user to run as */
+    char          * group;          /**< group to run as */
+    lztq          * servers;        /**< list of server_cfg_t's */
+    logger_cfg_t  * log;            /**< generic log configuration */
+    rproxy_rusage_t rusage;         /**< the needed resource totals */
 };
 
 /********************************************

@@ -183,6 +183,8 @@ util_set_rlimits(int nofiles) {
         return -1;
     }
 
+#else
+    fprintf(stderr, "Your system does not support get|setrlimits!\n");
 #endif
     return 0;
 } /* rproxy_set_rlimits */

@@ -1459,6 +1459,61 @@ rproxy_process_pending(int fd, short which, void * arg) {
     }
 } /* rproxy_process_pending */
 
+static void
+rproxy_report_rusage(rproxy_rusage_t * rusage) {
+    if (!rusage) {
+        return;
+    }
+
+    printf("Configured resource usage information\n");
+    printf("  Number of downstream connections : %u\n", rusage->total_num_connections);
+    printf("  Number of threads                : %u\n", rusage->total_num_threads);
+    printf("  Number of pending connections    : %u\n\n", rusage->total_max_pending);
+
+    printf("Detailed resource rundown\n");
+    printf("  A thread requires 2 fds            : %u\n", rusage->total_num_threads * 2);
+    printf("  A ds connection is 1 fd * nthreads : %u\n",
+           (rusage->total_num_connections * rusage->total_num_threads));
+    printf("  Base fd resources needed           : %u\n\n",
+           ((rusage->total_num_connections) * (rusage->total_num_threads * 2)));
+
+    printf("  In a worst-case scenario where all pending queues are filled, you "
+           "will need a bit more than %u descriptors available\n\n",
+           ((rusage->total_num_connections) * (rusage->total_num_threads * 2)) +
+           rusage->total_max_pending);
+
+#ifndef NO_RLIMITS
+    {
+        struct rlimit limit;
+        unsigned int  needed_fds;
+
+        if (getrlimit(RLIMIT_NOFILE, &limit) == -1) {
+            return;
+        }
+
+        needed_fds = ((rusage->total_num_connections) *
+                      (rusage->total_num_threads * 2)) + rusage->total_max_pending;
+
+        printf("  Your *CURRENT* rlimit is : %u\n", (unsigned int)limit.rlim_cur);
+        printf("  Your *MAXIMUM* rlimit is : %u\n\n", (unsigned int)limit.rlim_max);
+
+        if ((unsigned int)limit.rlim_cur < needed_fds) {
+            printf("** WARNING: Needed resources exceed the current limits!\n");
+
+            if ((unsigned int)limit.rlim_max > needed_fds) {
+                printf("** WARNING: The good news is that you do have the "
+                       "ability to obtain the resources! Try increasing the "
+                       "option 'max-nofiles' in your configuration.\n");
+            } else {
+                printf("** WARNING: You must consult your operating systems "
+                       "documentation in order to increase the resources "
+                       "needed.\n");
+            }
+        }
+#endif
+} /* rproxy_report_rusage */
+} /* rproxy_report_rusage */
+
 int
 main(int argc, char ** argv) {
     rproxy_cfg_t * rproxy_cfg;
@@ -1485,6 +1540,9 @@ main(int argc, char ** argv) {
     if (util_set_rlimits(rproxy_cfg->max_nofile) < 0) {
         exit(-1);
     }
+
+    /* calculate and report on resources needed for the current configuration */
+    rproxy_report_rusage(&rproxy_cfg->rusage);
 
     if (rproxy_cfg->daemonize == true) {
         if (util_daemonize(rproxy_cfg->rootdir, 1) < 0) {
