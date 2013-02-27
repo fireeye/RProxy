@@ -129,7 +129,7 @@ append_ssl_x_headers(headers_cfg_t * headers_cfg, evhtp_request_t * upstream_req
             free(cip_str);
         }
     }
-    
+
     if (headers_cfg->x_ssl_sha1 == true) {
         unsigned char * sha1_str;
 

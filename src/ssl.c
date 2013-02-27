@@ -226,51 +226,50 @@ ssl_notafter_tostr(evhtp_ssl_t * ssl) {
 
 unsigned char *
 ssl_sha1_tostr(evhtp_ssl_t * ssl) {
-    EVP_MD        * md_alg;
-    X509          * cert;
-    unsigned int    n;
-    unsigned char   md[EVP_MAX_MD_SIZE];
-    unsigned char*  buf = NULL;
-    size_t          offset;
-    size_t          nsz;
-    int             sz;
-    int             i;
-    
+    EVP_MD       * md_alg;
+    X509         * cert;
+    unsigned int   n;
+    unsigned char  md[EVP_MAX_MD_SIZE];
+    unsigned char* buf = NULL;
+    size_t         offset;
+    size_t         nsz;
+    int            sz;
+    int            i;
+
     if (!ssl) {
         return NULL;
     }
-    
+
     md_alg = EVP_sha1();
     if (!md_alg) {
         return NULL;
     }
-    
+
     if (!(cert = SSL_get_peer_certificate(ssl))) {
         return NULL;
     }
-    
-    n = 0;
-    if (!X509_digest(cert,md_alg,md,&n))
-        return NULL;
 
-    nsz = 3*n+1;        
-    buf = (unsigned char*)calloc(nsz, 1);
+    n   = 0;
+    if (!X509_digest(cert, md_alg, md, &n)) {
+        return NULL;
+    }
+
+    nsz = 3 * n + 1;
+    buf = (unsigned char *)calloc(nsz, 1);
     if (buf) {
         offset = 0;
-        for (i=0; i < n; i++)
-        {
-            sz = snprintf(buf + offset, nsz - offset, "%02X%c", md[i], (i+1==n) ? 0 : ':');
+        for (i = 0; i < n; i++) {
+            sz      = snprintf(buf + offset, nsz - offset, "%02X%c", md[i], (i + 1 == n) ? 0 : ':');
             offset += sz;
-            
-            if (sz < 0 || offset >= nsz)
-            {
+
+            if (sz < 0 || offset >= nsz) {
                 free(buf);
                 buf = NULL;
                 break;
             }
         }
     }
-    
+
     X509_free(cert);
 
     return buf;
