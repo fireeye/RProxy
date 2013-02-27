@@ -121,6 +121,7 @@ struct headers_cfg {
     bool   x_ssl_issuer;
     bool   x_ssl_notbefore;
     bool   x_ssl_notafter;
+    bool   x_ssl_sha1;
     bool   x_ssl_serial;
     bool   x_ssl_cipher;
     bool   x_ssl_certificate;
@@ -415,6 +416,7 @@ unsigned char * ssl_subject_tostr(evhtp_ssl_t *);
 unsigned char * ssl_issuer_tostr(evhtp_ssl_t *);
 unsigned char * ssl_notbefore_tostr(evhtp_ssl_t *);
 unsigned char * ssl_notafter_tostr(evhtp_ssl_t *);
+unsigned char * ssl_sha1_tostr(evhtp_ssl_t *);
 unsigned char * ssl_serial_tostr(evhtp_ssl_t *);
 unsigned char * ssl_cipher_tostr(evhtp_ssl_t *);
 unsigned char * ssl_cert_tostr(evhtp_ssl_t *);

@@ -86,6 +86,7 @@ static cfg_opt_t       headers_opts[] = {
     CFG_BOOL("x-ssl-notbefore",   cfg_false,     CFGF_NONE),
     CFG_BOOL("x-ssl-notafter",    cfg_false,     CFGF_NONE),
     CFG_BOOL("x-ssl-serial",      cfg_false,     CFGF_NONE),
+    CFG_BOOL("x-ssl-sha1",        cfg_false,     CFGF_NONE),
     CFG_BOOL("x-ssl-cipher",      cfg_false,     CFGF_NONE),
     CFG_BOOL("x-ssl-certificate", cfg_true,      CFGF_NONE),
     CFG_SEC("x509-extension",     x509_ext_opts, CFGF_MULTI),
@@ -726,6 +727,7 @@ headers_cfg_parse(cfg_t * cfg) {
     hcfg->x_ssl_issuer      = cfg_getbool(cfg, "x-ssl-issuer");
     hcfg->x_ssl_notbefore   = cfg_getbool(cfg, "x-ssl-notbefore");
     hcfg->x_ssl_notafter    = cfg_getbool(cfg, "x-ssl-notafter");
+    hcfg->x_ssl_sha1        = cfg_getbool(cfg, "x-ssl-sha1");
     hcfg->x_ssl_serial      = cfg_getbool(cfg, "x-ssl-serial");
     hcfg->x_ssl_cipher      = cfg_getbool(cfg, "x-ssl-cipher");
     hcfg->x_ssl_certificate = cfg_getbool(cfg, "x-ssl-certificate");
