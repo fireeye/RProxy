@@ -225,6 +225,57 @@ ssl_notafter_tostr(evhtp_ssl_t * ssl) {
 } /* ssl_notafter_tostr */
 
 unsigned char *
+ssl_sha1_tostr(evhtp_ssl_t * ssl) {
+    EVP_MD       * md_alg;
+    X509         * cert;
+    unsigned int   n;
+    unsigned char  md[EVP_MAX_MD_SIZE];
+    unsigned char* buf = NULL;
+    size_t         offset;
+    size_t         nsz;
+    int            sz;
+    int            i;
+
+    if (!ssl) {
+        return NULL;
+    }
+
+    md_alg = EVP_sha1();
+    if (!md_alg) {
+        return NULL;
+    }
+
+    if (!(cert = SSL_get_peer_certificate(ssl))) {
+        return NULL;
+    }
+
+    n   = 0;
+    if (!X509_digest(cert, md_alg, md, &n)) {
+        return NULL;
+    }
+
+    nsz = 3 * n + 1;
+    buf = (unsigned char *)calloc(nsz, 1);
+    if (buf) {
+        offset = 0;
+        for (i = 0; i < n; i++) {
+            sz      = snprintf(buf + offset, nsz - offset, "%02X%c", md[i], (i + 1 == n) ? 0 : ':');
+            offset += sz;
+
+            if (sz < 0 || offset >= nsz) {
+                free(buf);
+                buf = NULL;
+                break;
+            }
+        }
+    }
+
+    X509_free(cert);
+
+    return buf;
+} /* ssl_sha1 */
+
+unsigned char *
 ssl_serial_tostr(evhtp_ssl_t * ssl) {
     BIO           * bio;
     X509          * cert;
@@ -327,7 +378,11 @@ ssl_cert_tostr(evhtp_ssl_t * ssl) {
 
     for (i = 0; i < raw_cert_len - 1; i++) {
         if (raw_cert_str[i] == '\n') {
-            cert_len++;
+            /*
+             * \n's will be converted to \r\n\t, so we must reserve
+             * enough space for that much data.
+             */
+            cert_len += 2;
         }
     }
 
@@ -336,10 +391,12 @@ ssl_cert_tostr(evhtp_ssl_t * ssl) {
     p        = cert_str;
 
     for (i = 0; i < raw_cert_len - 1; i++) {
-        *p++ = raw_cert_str[i];
-
         if (raw_cert_str[i] == '\n') {
+            *p++ = '\r';
+            *p++ = '\n';
             *p++ = '\t';
+        } else {
+            *p++ = raw_cert_str[i];
         }
     }
 
@@ -347,8 +404,6 @@ ssl_cert_tostr(evhtp_ssl_t * ssl) {
     if (raw_cert_str[i] != '\n') {
         *p++ = raw_cert_str[i];
     }
-
-    /* assert(*p == 0); */
 
     BIO_free(bio);
     X509_free(cert);
@@ -455,9 +510,9 @@ ssl_x509_verifyfn(int ok, X509_STORE_CTX * store) {
         rproxy = evthr_get_aux(connection->thread);
         assert(rproxy != NULL);
 
-        logger_log_error(rproxy->logger,
-                         "[WARN] SSL: verify error:num=%d:%s:depth=%d:%s\n", err,
-                         X509_verify_cert_error_string(err), depth, buf);
+        logger_log(rproxy->err_log, lzlog_err,
+                   "SSL: verify error:num=%d:%s:depth=%d:%s", err,
+                   X509_verify_cert_error_string(err), depth, buf);
     }
 
     return ok;
