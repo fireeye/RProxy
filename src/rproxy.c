@@ -28,6 +28,10 @@
 #include <malloc.h>
 #endif
 
+#ifndef NO_RLIMIT
+#include <sys/resource.h>
+#endif
+
 #include "rproxy.h"
 
 static void rproxy_process_pending(int, short, void *);
