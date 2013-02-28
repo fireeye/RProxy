@@ -1,3 +1,12 @@
+v2.0.11
+ o Updating the README (unfinished) (83cb952 Mark Ellzey)
+ o Close connection if no rules are matched. (18d5009 Mark Ellzey)
+ o Version 2.0.10, see ChangeLog for details (ccdbc31 Mark Ellzey)
+ o Added resource utilization reporting on startup (cfcbfe9 Mark Ellzey)
+ o Add support for sha-1 fingerprint. (072598e Sean Cunningham)
+ o Formatting fixup. (e3a81e8 Mark Ellzey)
+ o Fix for trailing } on ifdef. (b05fe7f Mark Ellzey)
+
 v2.0.10
  o resume client request if pending timeout hits. (c282793 Mark Ellzey)
  o Updating the README (unfinished) (83cb952 Mark Ellzey)
