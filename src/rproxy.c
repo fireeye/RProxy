@@ -1521,8 +1521,8 @@ rproxy_report_rusage(rproxy_rusage_t * rusage) {
                        "needed.\n");
             }
         }
+    }
 #endif
-} /* rproxy_report_rusage */
 } /* rproxy_report_rusage */
 
 int
