@@ -1196,7 +1196,7 @@ downstream_connection_eventcb(evbev_t * bev, short events, void * arg) {
         if (up_request) {
             evhtp_connection_t * up_conn = evhtp_request_get_connection(up_request);
 
-            if (!request->upstream_err) {
+            if (!request->upstream_err & up_request->finished == 0) {
                 evhtp_unset_all_hooks(&up_request->hooks);
 
                 logger_log_request_error(rule->err_log, request,
