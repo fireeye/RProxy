@@ -600,7 +600,7 @@ proxy_parser_fini(htparser * p) {
      * to call our read body callbacks (proxy_parser_*_chunk*() /
      * proxy_parser_body())
      */
-    if (!htparser_get_content_length(request->parser)) {
+    if (!htparser_get_content_pending(request->parser)) {
         request->done = 1;
     }
 
