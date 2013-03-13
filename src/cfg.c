@@ -17,6 +17,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include "rproxy.h"
 
@@ -581,6 +584,7 @@ ssl_cfg_parse(cfg_t * cfg) {
     int               proto_on_count;
     int               proto_off_count;
     int               i;
+    struct stat       file_stat;
 
     if (cfg == NULL) {
         return NULL;
@@ -596,18 +600,34 @@ ssl_cfg_parse(cfg_t * cfg) {
 
     if (cfg_getstr(cfg, "cert")) {
         scfg->pemfile = strdup(cfg_getstr(cfg, "cert"));
+        if (stat(scfg->pemfile, &file_stat) != 0) {
+            fprintf(stderr, "Cannot find SSL cert file '%s'\n", scfg->pemfile);
+            exit(EXIT_FAILURE);
+        }
     }
 
     if (cfg_getstr(cfg, "key")) {
         scfg->privfile = strdup(cfg_getstr(cfg, "key"));
+        if (stat(scfg->privfile, &file_stat) != 0) {
+            fprintf(stderr, "Cannot find SSL key file '%s'\n", scfg->privfile);
+            exit(EXIT_FAILURE);
+        }
     }
 
     if (cfg_getstr(cfg, "ca")) {
         scfg->cafile = strdup(cfg_getstr(cfg, "ca"));
+        if (stat(scfg->cafile, &file_stat) != 0) {
+            fprintf(stderr, "Cannot find SSL ca file '%s'\n", scfg->cafile);
+            exit(EXIT_FAILURE);
+        }
     }
 
     if (cfg_getstr(cfg, "capath")) {
         scfg->capath = strdup(cfg_getstr(cfg, "capath"));
+        if (stat(scfg->capath, &file_stat) != 0) {
+            fprintf(stderr, "Cannot find SSL capath file '%s'\n", scfg->capath);
+            exit(EXIT_FAILURE);
+        }
     }
 
     if (cfg_getstr(cfg, "ciphers")) {
