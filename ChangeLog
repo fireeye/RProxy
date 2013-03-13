@@ -1,3 +1,7 @@
+v2.0.13
+ o during cfg parsing, stat SSL configuration files to ensure that they exist (51386c7 Steven Ross)
+ o use htparser_get_content_pending (c972ff3 Mark Ellzey)
+
 v2.0.11
  o Updating the README (unfinished) (83cb952 Mark Ellzey)
  o Close connection if no rules are matched. (18d5009 Mark Ellzey)
