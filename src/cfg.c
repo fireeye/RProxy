@@ -121,25 +121,6 @@ static cfg_opt_t       vhost_opts[] = {
     CFG_END()
 };
 
-static cfg_opt_t ssl_opts[] = {
-    CFG_BOOL("enabled",           cfg_false,                   CFGF_NONE),
-    CFG_STR_LIST("protocols-on",  "{ALL}",                     CFGF_NONE),
-    CFG_STR_LIST("protocols-off", NULL,                        CFGF_NONE),
-    CFG_STR("cert",               NULL,                        CFGF_NONE),
-    CFG_STR("key",                NULL,                        CFGF_NONE),
-    CFG_STR("ca",                 NULL,                        CFGF_NONE),
-    CFG_STR("capath",             NULL,                        CFGF_NONE),
-    CFG_STR("ciphers",            DEFAULT_CIPHERS,             CFGF_NONE),
-    CFG_BOOL("verify-peer",       cfg_false,                   CFGF_NONE),
-    CFG_BOOL("enforce-peer-cert", cfg_false,                   CFGF_NONE),
-    CFG_INT("verify-depth",       0,                           CFGF_NONE),
-    CFG_INT("context-timeout",    172800,                      CFGF_NONE),
-    CFG_BOOL("cache-enabled",     cfg_true,                    CFGF_NONE),
-    CFG_INT("cache-timeout",      1024,                        CFGF_NONE),
-    CFG_INT("cache-size",         65535,                       CFGF_NONE),
-    CFG_END()
-};
-
 static cfg_opt_t       server_opts[] = {
     CFG_STR("addr",                 "127.0.0.1",     CFGF_NONE),
     CFG_INT("port",                 8080,            CFGF_NONE),
