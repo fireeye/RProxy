@@ -1444,10 +1444,17 @@ downstream_connection_retry(int sock, short which, void * arg) {
     /* once the socket has connected (or errored), the
      * downstream_connection_eventcb function is called.
      */
-    bufferevent_socket_connect_hostname(connection->connection,
-                                        rproxy->dns_base, AF_INET,
-                                        downstream->config->host,
-                                        downstream->config->port);
+    {
+	struct sockaddr_in sin;
+
+	sin.sin_family         = AF_INET;
+	sin.sin_addr.s_addr    = inet_addr(downstream->config->host);
+	sin.sin_port           = htons(downstream->config->port);
+
+
+	bufferevent_socket_connect(connection->connection,
+		(struct sockaddr *)&sin, sizeof(sin));
+    }
 
     {
         /* if configured, apply our read/write timeouts on the downstream
