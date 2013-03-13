@@ -15,7 +15,7 @@ ExternalProject_Add (
 set (SSL_DSWITCH "")
 
 if (NOT APPLE)
-	if (${CMAKE_BUILD_TYPE} matches "Debug.*")
+	if (${CMAKE_BUILD_TYPE} matches "Debug")
 		set (SSL_DSWITCH "-d")
 	endif()
 
@@ -29,7 +29,7 @@ if (NOT APPLE)
 		INSTALL_COMMAND make install_sw
 	)
 else()
-	if (${CMAKE_BUILD_TYPE} MATCHES "Debug.*")
+	if (${CMAKE_BUILD_TYPE} MATCHES "Debug")
 		set (SSL_DSWITCH "-g3 -O0")
 	endif()
 
@@ -61,7 +61,8 @@ ExternalProject_Add(
 	libevhtp
 	DEPENDS libevent
 	GIT_REPOSITORY git://github.com/ellzey/libevhtp.git
-	GIT_TAG 0.4.14
+	GIT_TAG master
+	#GIT_TAG 1.1.7
 	UPDATE_COMMAND ""
   CMAKE_ARGS -DCMAKE_FIND_ROOT_PATH:PATH=${RPROXY_DEPS_INSTALL} -DCMAKE_PREFIX_PATH:PATH=${RPROXY_DEPS_INSTALL} -DCMAKE_INSTALL_PREFIX:PATH=${RPROXY_DEPS_INSTALL} -DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE}
 )
