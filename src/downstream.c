@@ -759,8 +759,10 @@ downstream_connection_set_down(downstream_c_t * connection) {
     connection->rtt        = DBL_MAX;
     connection->sport      = 0;
 
-    evtimer_del(connection->retry_timer);
-    evtimer_add(connection->retry_timer, &downstream->config->retry_ival);
+    if (!evtimer_pending(connection->retry_timer, NULL)) {
+        evtimer_del(connection->retry_timer);
+        evtimer_add(connection->retry_timer, &downstream->config->retry_ival);
+    }
 
     if (connection->bootstrapped == 0) {
         /* this is the first time the connection has been set to down, in most
@@ -773,7 +775,7 @@ downstream_connection_set_down(downstream_c_t * connection) {
     }
 
     return 0;
-} /* downstream_connection_set_down */
+}         /* downstream_connection_set_down */
 
 /**
  * @brief sets a downstream connection to active, signifying it is currently
@@ -828,7 +830,7 @@ downstream_connection_set_active(downstream_c_t * connection) {
     event_del(connection->retry_timer);
 
     return 0;
-} /* downstream_connection_set_active */
+}         /* downstream_connection_set_active */
 
 /**
  * @brief search through a list of downstream_t's and attempt to find one that
@@ -1070,7 +1072,7 @@ downstream_connection_get_rr(rule_t * rule) {
     } while (1);
 
     return conn;
-} /* downstream_connection_get_rr */
+}         /* downstream_connection_get_rr */
 
 downstream_c_t *
 downstream_connection_get(rule_t * rule) {
@@ -1142,7 +1144,7 @@ downstream_connection_writecb(evbev_t * bev, void * arg) {
     }
 
     return;
-} /* downstream_connection_writecb */
+}         /* downstream_connection_writecb */
 
 /**
  * @brief called when a downstream has either successfully been connect()'d or
@@ -1244,7 +1246,7 @@ downstream_connection_eventcb(evbev_t * bev, short events, void * arg) {
 
     res = downstream_connection_set_down(connection);
     assert(res >= 0);
-} /* downstream_connection_eventcb */
+}         /* downstream_connection_eventcb */
 
 /**
  * @brief called when data becomes available on a downstream socket and deals
@@ -1402,7 +1404,7 @@ downstream_connection_readcb(evbev_t * bev, void * arg) {
     }
 
     /* if we get to here, we are not done with downstream -> upstream IO */
-} /* downstream_connection_readcb */
+}         /* downstream_connection_readcb */
 
 /**
  * @brief called when the retry event timer has been triggered and attempts to
@@ -1445,15 +1447,15 @@ downstream_connection_retry(int sock, short which, void * arg) {
      * downstream_connection_eventcb function is called.
      */
     {
-	struct sockaddr_in sin;
+        struct sockaddr_in sin;
 
-	sin.sin_family         = AF_INET;
-	sin.sin_addr.s_addr    = inet_addr(downstream->config->host);
-	sin.sin_port           = htons(downstream->config->port);
+        sin.sin_family      = AF_INET;
+        sin.sin_addr.s_addr = inet_addr(downstream->config->host);
+        sin.sin_port        = htons(downstream->config->port);
 
 
-	bufferevent_socket_connect(connection->connection,
-		(struct sockaddr *)&sin, sizeof(sin));
+        bufferevent_socket_connect(connection->connection,
+                                   (struct sockaddr *)&sin, sizeof(sin));
     }
 
     {
@@ -1479,7 +1481,7 @@ downstream_connection_retry(int sock, short which, void * arg) {
     }
 
     bufferevent_enable(connection->connection, EV_READ | EV_WRITE);
-} /* downstream_connection_retry */
+}         /* downstream_connection_retry */
 
 /**
  * @brief initializes downstream connections

@@ -715,6 +715,10 @@ upstream_error(evhtp_request_t * upstream_req, short events, void * arg) {
             downstream_connection_set_down(ds_conn);
         }
 
+        if (ds_conn->request == request) {
+            ds_conn->request = NULL;
+        }
+
         request_free(request);
     }
 } /* upstream_error */
