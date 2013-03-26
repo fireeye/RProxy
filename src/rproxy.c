@@ -1313,6 +1313,10 @@ add_vhost(lztq_elem * elem, void * arg) {
     /* create a new child evhtp for this vhost */
     htp_vhost = evhtp_new(htp->evbase, NULL);
 
+    /* disable 100-continue responses, we let the downstreams deal with this.
+     */
+    evhtp_disable_100_continue(htp);
+
     /* for each rule, create a evhtp callback with the defined type */
     lztq_for_each(vcfg->rule_cfgs, add_callback_rule, htp_vhost);
 
@@ -1376,6 +1380,11 @@ rproxy_init(evbase_t * evbase, rproxy_cfg_t * cfg) {
          */
         htp    = evhtp_new(evbase, NULL);
         assert(htp != NULL);
+
+        /* we want to make sure 100-continue is not sent by evhtp, but the
+         * downstreams themselves.
+         */
+        evhtp_disable_100_continue(htp);
 
         /* create a pre-accept callback which will disconnect the client
          * immediately if the max-pending request queue is over the configured
