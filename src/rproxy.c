@@ -1315,7 +1315,7 @@ add_vhost(lztq_elem * elem, void * arg) {
 
     /* disable 100-continue responses, we let the downstreams deal with this.
      */
-    evhtp_disable_100_continue(htp);
+    evhtp_disable_100_continue(htp_vhost);
 
     /* for each rule, create a evhtp callback with the defined type */
     lztq_for_each(vcfg->rule_cfgs, add_callback_rule, htp_vhost);
