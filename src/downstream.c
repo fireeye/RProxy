@@ -607,6 +607,57 @@ proxy_parser_fini(htparser * p) {
     return 0;
 }
 
+static int
+proxy_parser_headers_begin(htparser * p) {
+    request_t       * request;
+    evhtp_request_t * upstream_r;
+    evbuf_t         * buf;
+    const char      * res_str;
+
+    assert(p != NULL);
+
+    request = htparser_get_userdata(p);
+    assert(request != NULL);
+
+    if (REQUEST_HAS_ERROR(request)) {
+        return -1;
+    }
+
+    if (htparser_get_status(p) >= 200) {
+        /* this will be handled in headers_finished */
+        return 0;
+    }
+
+    if (!(upstream_r = request->upstream_request)) {
+        request->error = 1;
+        return -1;
+    }
+
+    if (!(buf = bufferevent_get_output(evhtp_request_get_bev(upstream_r)))) {
+        request->error = 1;
+        return -1;
+    }
+
+    switch (htparser_get_status(p)) {
+        case 100:
+            res_str = "Continue";
+            break;
+        case 101:
+            res_str = "Switching Protocols";
+            break;
+        default:
+            res_str = "";
+            break;
+    }
+
+    evbuffer_add_printf(buf, "HTTP/%d.%d %d %s\r\n\r\n",
+                        htparser_get_major(p),
+                        htparser_get_minor(p),
+                        htparser_get_status(p), res_str);
+
+    return 0;
+} /* proxy_parser_headers_begin */
+
 static htparse_hooks proxy_parser_hooks = {
     .on_msg_begin       = NULL,
     .method             = NULL,
@@ -616,7 +667,7 @@ static htparse_hooks proxy_parser_hooks = {
     .path               = NULL,
     .args               = NULL,
     .uri                = NULL,
-    .on_hdrs_begin      = NULL,
+    .on_hdrs_begin      = proxy_parser_headers_begin,
     .hdr_key            = proxy_parser_header_key,
     .hdr_val            = proxy_parser_header_val,
     .on_hdrs_complete   = proxy_parser_headers_complete,
@@ -759,8 +810,10 @@ downstream_connection_set_down(downstream_c_t * connection) {
     connection->rtt        = DBL_MAX;
     connection->sport      = 0;
 
-    evtimer_del(connection->retry_timer);
-    evtimer_add(connection->retry_timer, &downstream->config->retry_ival);
+    if (!evtimer_pending(connection->retry_timer, NULL)) {
+        evtimer_del(connection->retry_timer);
+        evtimer_add(connection->retry_timer, &downstream->config->retry_ival);
+    }
 
     if (connection->bootstrapped == 0) {
         /* this is the first time the connection has been set to down, in most
@@ -773,7 +826,7 @@ downstream_connection_set_down(downstream_c_t * connection) {
     }
 
     return 0;
-} /* downstream_connection_set_down */
+}         /* downstream_connection_set_down */
 
 /**
  * @brief sets a downstream connection to active, signifying it is currently
@@ -828,7 +881,7 @@ downstream_connection_set_active(downstream_c_t * connection) {
     event_del(connection->retry_timer);
 
     return 0;
-} /* downstream_connection_set_active */
+}         /* downstream_connection_set_active */
 
 /**
  * @brief search through a list of downstream_t's and attempt to find one that
@@ -1070,7 +1123,7 @@ downstream_connection_get_rr(rule_t * rule) {
     } while (1);
 
     return conn;
-} /* downstream_connection_get_rr */
+}         /* downstream_connection_get_rr */
 
 downstream_c_t *
 downstream_connection_get(rule_t * rule) {
@@ -1142,7 +1195,7 @@ downstream_connection_writecb(evbev_t * bev, void * arg) {
     }
 
     return;
-} /* downstream_connection_writecb */
+}         /* downstream_connection_writecb */
 
 /**
  * @brief called when a downstream has either successfully been connect()'d or
@@ -1244,7 +1297,7 @@ downstream_connection_eventcb(evbev_t * bev, short events, void * arg) {
 
     res = downstream_connection_set_down(connection);
     assert(res >= 0);
-} /* downstream_connection_eventcb */
+}         /* downstream_connection_eventcb */
 
 /**
  * @brief called when data becomes available on a downstream socket and deals
@@ -1402,7 +1455,7 @@ downstream_connection_readcb(evbev_t * bev, void * arg) {
     }
 
     /* if we get to here, we are not done with downstream -> upstream IO */
-} /* downstream_connection_readcb */
+}         /* downstream_connection_readcb */
 
 /**
  * @brief called when the retry event timer has been triggered and attempts to
@@ -1445,15 +1498,15 @@ downstream_connection_retry(int sock, short which, void * arg) {
      * downstream_connection_eventcb function is called.
      */
     {
-	struct sockaddr_in sin;
+        struct sockaddr_in sin;
 
-	sin.sin_family         = AF_INET;
-	sin.sin_addr.s_addr    = inet_addr(downstream->config->host);
-	sin.sin_port           = htons(downstream->config->port);
+        sin.sin_family      = AF_INET;
+        sin.sin_addr.s_addr = inet_addr(downstream->config->host);
+        sin.sin_port        = htons(downstream->config->port);
 
 
-	bufferevent_socket_connect(connection->connection,
-		(struct sockaddr *)&sin, sizeof(sin));
+        bufferevent_socket_connect(connection->connection,
+                                   (struct sockaddr *)&sin, sizeof(sin));
     }
 
     {
@@ -1479,7 +1532,7 @@ downstream_connection_retry(int sock, short which, void * arg) {
     }
 
     bufferevent_enable(connection->connection, EV_READ | EV_WRITE);
-} /* downstream_connection_retry */
+}         /* downstream_connection_retry */
 
 /**
  * @brief initializes downstream connections

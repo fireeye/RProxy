@@ -1,3 +1,9 @@
+v2.0.14
+ o Fix bug where connection->request was not being set to NULL on error. (f7da115 Mark Ellzey)
+ o use evhtp_disable_100_continue for each new evhtp. (7f0d2fd Mark Ellzey)
+ o Fix bug where evhtp_disable_100_continue was being called on main evhtp instead of the vhost. (450d715 Mark Ellzey)
+ o Deal with downstream -> rproxy -> upstream 1xx response. (c4d923c Mark Ellzey)
+
 v2.0.13
  o during cfg parsing, stat SSL configuration files to ensure that they exist (51386c7 Steven Ross)
  o use htparser_get_content_pending (c972ff3 Mark Ellzey)
