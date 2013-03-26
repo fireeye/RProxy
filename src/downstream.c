@@ -607,6 +607,57 @@ proxy_parser_fini(htparser * p) {
     return 0;
 }
 
+static int
+proxy_parser_headers_begin(htparser * p) {
+    request_t       * request;
+    evhtp_request_t * upstream_r;
+    evbuf_t         * buf;
+    const char      * res_str;
+
+    assert(p != NULL);
+
+    request = htparser_get_userdata(p);
+    assert(request != NULL);
+
+    if (REQUEST_HAS_ERROR(request)) {
+        return -1;
+    }
+
+    if (htparser_get_status(p) >= 200) {
+        /* this will be handled in headers_finished */
+        return 0;
+    }
+
+    if (!(upstream_r = request->upstream_request)) {
+        request->error = 1;
+        return -1;
+    }
+
+    if (!(buf = bufferevent_get_output(evhtp_request_get_bev(upstream_r)))) {
+        request->error = 1;
+        return -1;
+    }
+
+    switch (htparser_get_status(p)) {
+        case 100:
+            res_str = "Continue";
+            break;
+        case 101:
+            res_str = "Switching Protocols";
+            break;
+        default:
+            res_str = "";
+            break;
+    }
+
+    evbuffer_add_printf(buf, "HTTP/%d.%d %d %s\r\n\r\n",
+                        htparser_get_major(p),
+                        htparser_get_minor(p),
+                        htparser_get_status(p), res_str);
+
+    return 0;
+} /* proxy_parser_headers_begin */
+
 static htparse_hooks proxy_parser_hooks = {
     .on_msg_begin       = NULL,
     .method             = NULL,
@@ -616,7 +667,7 @@ static htparse_hooks proxy_parser_hooks = {
     .path               = NULL,
     .args               = NULL,
     .uri                = NULL,
-    .on_hdrs_begin      = NULL,
+    .on_hdrs_begin      = proxy_parser_headers_begin,
     .hdr_key            = proxy_parser_header_key,
     .hdr_val            = proxy_parser_header_val,
     .on_hdrs_complete   = proxy_parser_headers_complete,
