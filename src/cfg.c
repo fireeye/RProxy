@@ -53,7 +53,7 @@ static cfg_opt_t       ssl_opts[] = {
     CFG_BOOL("cache-enabled",     cfg_true,        CFGF_NONE),
     CFG_INT("cache-timeout",      1024,            CFGF_NONE),
     CFG_INT("cache-size",         65535,           CFGF_NONE),
-    CFG_SEC("crl",                NULL,            CFGF_NODEFAULT),
+    CFG_SEC("crl",                ssl_crl_opts,    CFGF_NODEFAULT),
     CFG_END()
 };
 
