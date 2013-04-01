@@ -291,8 +291,13 @@ struct ssl_crl_ent {
     evhtp_t       * htp;
     X509_STORE    * crl;
     event_t       * reload_timer_ev;
+#ifdef __APPLE__
     struct timespec last_file_mod;
     struct timespec last_dir_mod;
+#else
+    time_t last_file_mod;
+    time_t last_dir_mod;
+#endif
 };
 
 struct vhost {

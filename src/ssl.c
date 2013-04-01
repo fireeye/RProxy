@@ -488,11 +488,17 @@ ssl_crl_ent_should_reload(ssl_crl_ent_t * crl_ent) {
             return -1;
         }
 
+#if __APPLE__
         if (statb.st_mtimespec.tv_sec > crl_ent->last_file_mod.tv_sec ||
             statb.st_mtimespec.tv_nsec > crl_ent->last_file_mod.tv_nsec) {
             /* file has been modified, so return yes */
             return 1;
         }
+#else
+        if (statb.st_mtime > crl_ent->last_file_mod) {
+            return 1;
+        }
+#endif
     }
 
     if (crl_ent->cfg->dirname) {
@@ -500,14 +506,20 @@ ssl_crl_ent_should_reload(ssl_crl_ent_t * crl_ent) {
             return -1;
         }
 
+#if __APPLE__
         if (statb.st_mtimespec.tv_sec > crl_ent->last_dir_mod.tv_sec ||
             statb.st_mtimespec.tv_nsec > crl_ent->last_dir_mod.tv_nsec) {
             return 1;
         }
+#else
+        if (statb.st_mtime > crl_ent->last_file_mod) {
+            return 1;
+        }
+#endif
     }
 
     return 0;
-}
+} /* ssl_crl_ent_should_reload */
 
 int
 ssl_crl_ent_reload(ssl_crl_ent_t * crl_ent) {
@@ -588,7 +600,11 @@ ssl_crl_ent_reload(ssl_crl_ent_t * crl_ent) {
          * use to check whether we should roll this crl over or not when the
          * even timer is triggered.
          * */
+#ifdef __APPLE__
         memcpy(&crl_ent->last_file_mod, &file_stat.st_mtimespec, sizeof(struct timespec));
+#else
+        crl_ent->last_file_mod = file_stat.st_mtime;
+#endif
 
         X509_LOOKUP_load_file(lookup, crl_ent->cfg->filename, X509_FILETYPE_PEM);
     }
@@ -615,7 +631,12 @@ ssl_crl_ent_reload(ssl_crl_ent_t * crl_ent) {
             return -1;
         }
 
+#ifdef __APPLE__
         memcpy(&crl_ent->last_dir_mod, &file_stat.st_mtimespec, sizeof(struct timespec));
+#else
+        crl_ent->last_dir_mod = file_stat.st_mtime;
+#endif
+
 
         X509_LOOKUP_add_dir(lookup, crl_ent->cfg->dirname, X509_FILETYPE_PEM);
     }
