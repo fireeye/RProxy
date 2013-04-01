@@ -30,6 +30,13 @@
  */
 static rproxy_rusage_t _rusage = { 0, 0, 0 };
 
+static cfg_opt_t       ssl_crl_opts[] = {
+    CFG_STR("file",        NULL,         CFGF_NONE),
+    CFG_STR("dir",         NULL,         CFGF_NONE),
+    CFG_INT_LIST("reload", "{ 10, 0  }", CFGF_NONE),
+    CFG_END()
+};
+
 static cfg_opt_t       ssl_opts[] = {
     CFG_BOOL("enabled",           cfg_false,       CFGF_NONE),
     CFG_STR_LIST("protocols-on",  "{ALL}",         CFGF_NONE),
@@ -46,6 +53,7 @@ static cfg_opt_t       ssl_opts[] = {
     CFG_BOOL("cache-enabled",     cfg_true,        CFGF_NONE),
     CFG_INT("cache-timeout",      1024,            CFGF_NONE),
     CFG_INT("cache-size",         65535,           CFGF_NONE),
+    CFG_SEC("crl",                NULL,            CFGF_NODEFAULT),
     CFG_END()
 };
 
@@ -686,8 +694,47 @@ ssl_cfg_parse(cfg_t * cfg) {
         }
     }
 
-    scfg->ssl_ctx_timeout = cfg_getint(cfg, "context-timeout");
-    scfg->ssl_opts        = ssl_opts;
+
+    if (cfg_getsec(cfg, "crl")) {
+        ssl_crl_cfg_t * crl_config;
+        cfg_t         * crl_cfg;
+
+        crl_cfg = cfg_getsec(cfg, "crl");
+        assert(crl_cfg != NULL);
+
+        if (!(crl_config = calloc(sizeof(ssl_crl_cfg_t), 1))) {
+            fprintf(stderr, "Could not allocate crl cfg %s\n", strerror(errno));
+            exit(EXIT_FAILURE);
+        }
+
+        if (cfg_getstr(crl_cfg, "file")) {
+            crl_config->filename = strdup(cfg_getstr(crl_cfg, "file"));
+
+            if (stat(crl_config->filename, &file_stat) == -1 || !S_ISREG(file_stat.st_mode)) {
+                fprintf(stderr, "Cannot find CRL file '%s'\n", crl_config->filename);
+                exit(EXIT_FAILURE);
+            }
+        }
+
+        if (cfg_getstr(crl_cfg, "dir")) {
+            crl_config->dirname = strdup(cfg_getstr(crl_cfg, "dir"));
+
+            if (stat(crl_config->dirname, &file_stat) != 0 || !S_ISDIR(file_stat.st_mode)) {
+                fprintf(stderr, "Cannot find CRL directory '%s'\n", crl_config->dirname);
+                exit(EXIT_FAILURE);
+            }
+        }
+
+        crl_config->reload_timer.tv_sec  = cfg_getnint(crl_cfg, "reload", 0);
+        crl_config->reload_timer.tv_usec = cfg_getnint(crl_cfg, "reload", 1);
+
+        /* at the moment evhtp does not give us an area where we can store this
+         * type of information without breaking the configuration structure. But
+         * it does have an optional user-supplied arguments, which we use here
+         * to store our CRL configuration.
+         */
+        scfg->args = (void *)crl_config;
+    }
 
     return scfg;
 } /* ssl_cfg_parse */

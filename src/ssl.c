@@ -21,6 +21,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <errno.h>
+#include <sys/stat.h>
 
 #include "rproxy.h"
 
@@ -477,6 +478,278 @@ ssl_x509_ext_tostr(evhtp_ssl_t * ssl, const char * oid) {
     return ext_str;
 } /* ssl_x509_ext_tostr */
 
+static int
+ssl_crl_ent_should_reload(ssl_crl_ent_t * crl_ent) {
+    struct stat statb;
+
+    if (crl_ent->cfg->filename) {
+        if (stat(crl_ent->cfg->filename, &statb) == -1) {
+            /* file doesn't exist, we need to error out of this */
+            return -1;
+        }
+
+        if (statb.st_mtimespec.tv_sec > crl_ent->last_file_mod.tv_sec ||
+            statb.st_mtimespec.tv_nsec > crl_ent->last_file_mod.tv_nsec) {
+            /* file has been modified, so return yes */
+            return 1;
+        }
+    }
+
+    if (crl_ent->cfg->dirname) {
+        if (stat(crl_ent->cfg->dirname, &statb) == -1) {
+            return -1;
+        }
+
+        if (statb.st_mtimespec.tv_sec > crl_ent->last_dir_mod.tv_sec ||
+            statb.st_mtimespec.tv_nsec > crl_ent->last_dir_mod.tv_nsec) {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+int
+ssl_crl_ent_reload(ssl_crl_ent_t * crl_ent) {
+    X509_LOOKUP * lookup;
+    X509_STORE  * old_crl;
+    struct stat   file_stat;
+    int           res;
+
+    if (crl_ent == NULL) {
+        return -1;
+    }
+
+    /* make sure we have either (or both) a crl file or directory */
+    if (crl_ent->cfg->filename == NULL && crl_ent->cfg->dirname == NULL) {
+        return -1;
+    }
+
+    if ((res = ssl_crl_ent_should_reload(crl_ent)) <= 0) {
+        /* we should error on a negative status here, but for right now we
+         * figure the crl list does not need to be reloaded.
+         */
+        return res;
+    }
+
+    /* if this crl_ent already has an allocated X509_STORE, we set it aside to
+     * be free'd if all goes well with the new load.
+     */
+    old_crl = NULL;
+
+    if (crl_ent->crl != NULL) {
+        old_crl      = crl_ent->crl;
+        crl_ent->crl = NULL;
+    }
+
+    /* initialize our own X509 storage stack. We utilize our own stack and our
+     * own manual CRL verification because OpenSSL does not give us a method of
+     * determining what a normal X509 is versus what a X509 CRL is. Since we
+     * want to allow RProxy to dynamically read in CRL information as it comes
+     * in, we must do it ourselves.
+     */
+    if ((crl_ent->crl = X509_STORE_new()) == NULL) {
+        /* something bad happened, so add the old crl back and return an error
+         * XXX: log something here.
+         */
+        crl_ent->crl = old_crl;
+        return -1;
+    }
+
+    if (crl_ent->cfg->filename != NULL) {
+        if (stat(crl_ent->cfg->filename, &file_stat) == -1) {
+            /* XXX log error here */
+            X509_STORE_free(crl_ent->crl);
+
+            crl_ent->crl = old_crl;
+            return -1;
+        }
+
+        if (!S_ISREG(file_stat.st_mode)) {
+            /* not a file, XXX log error here */
+            X509_STORE_free(crl_ent->crl);
+
+            crl_ent->crl = old_crl;
+            return -1;
+        }
+
+        /* attempt to add the filename to our x509 store */
+        if (!(lookup = X509_STORE_add_lookup(crl_ent->crl, X509_LOOKUP_file()))) {
+            /* oops, log something here */
+            X509_STORE_free(crl_ent->crl);
+
+            /* fallback to the old */
+            crl_ent->crl = old_crl;
+
+            return -1;
+        }
+
+        /* copy over the value of the last time this file was modified which we
+         * use to check whether we should roll this crl over or not when the
+         * even timer is triggered.
+         * */
+        memcpy(&crl_ent->last_file_mod, &file_stat.st_mtimespec, sizeof(struct timespec));
+
+        X509_LOOKUP_load_file(lookup, crl_ent->cfg->filename, X509_FILETYPE_PEM);
+    }
+
+    if (crl_ent->cfg->dirname != NULL) {
+        if (stat(crl_ent->cfg->dirname, &file_stat) == -1) {
+            X509_STORE_free(crl_ent->crl);
+
+            crl_ent->crl = old_crl;
+            return -1;
+        }
+
+        if (!S_ISDIR(file_stat.st_mode)) {
+            X509_STORE_free(crl_ent->crl);
+
+            crl_ent->crl = old_crl;
+            return -1;
+        }
+
+        if (!(lookup = X509_STORE_add_lookup(crl_ent->crl, X509_LOOKUP_hash_dir()))) {
+            X509_STORE_free(crl_ent->crl);
+
+            crl_ent->crl = old_crl;
+            return -1;
+        }
+
+        memcpy(&crl_ent->last_dir_mod, &file_stat.st_mtimespec, sizeof(struct timespec));
+
+        X509_LOOKUP_add_dir(lookup, crl_ent->cfg->dirname, X509_FILETYPE_PEM);
+    }
+
+    return 0;
+} /* ssl_crl_ent_reload */
+
+static void
+ssl_reload_timercb(int sock, short which, void * arg) {
+    ssl_crl_ent_t * crl_ent;
+
+    if (!(crl_ent = (ssl_crl_ent_t *)arg)) {
+        return;
+    }
+
+    /* TODO: log stuff here */
+    ssl_crl_ent_reload(crl_ent);
+    event_add(crl_ent->reload_timer_ev, &crl_ent->cfg->reload_timer);
+}
+
+ssl_crl_ent_t *
+ssl_crl_ent_new(evhtp_t * htp, ssl_crl_cfg_t * config) {
+    ssl_crl_ent_t * crl_ent;
+
+    if (htp == NULL || config == NULL) {
+        return NULL;
+    }
+
+    if (!(crl_ent = calloc(sizeof(ssl_crl_ent_t), 1))) {
+        return NULL;
+    }
+
+    crl_ent->cfg = config;
+    crl_ent->htp = htp;
+    crl_ent->reload_timer_ev = evtimer_new(htp->evbase, ssl_reload_timercb, crl_ent);
+
+    ssl_crl_ent_reload(crl_ent);
+    event_add(crl_ent->reload_timer_ev, &config->reload_timer);
+
+    return crl_ent;
+}
+
+static int
+ssl_verify_crl(int ok, X509_STORE_CTX * ctx, ssl_crl_ent_t * crl_ent) {
+    X509         * cert;
+    X509_NAME    * subject;
+    X509_NAME    * issuer;
+    X509_CRL     * crl;
+    X509_STORE_CTX store_ctx;
+    EVP_PKEY     * public_key;
+    X509_OBJECT    x509_obj = { 0 };
+    int            res;
+    int            timestamp_res;
+
+    if (crl_ent == NULL) {
+        return ok;
+    }
+
+    cert    = X509_STORE_CTX_get_current_cert(ctx);
+    subject = X509_get_subject_name(cert);
+    issuer  = X509_get_issuer_name(cert);
+
+    /* lookup the CRL using the subject of the cert */
+    X509_STORE_CTX_init(&store_ctx, crl_ent->crl, NULL, NULL);
+    res     = X509_STORE_get_by_subject(&store_ctx, X509_LU_CRL, subject, &x509_obj);
+    crl     = x509_obj.data.crl;
+
+    if ((res > 0) && crl != NULL) {
+        public_key = X509_get_pubkey(cert);
+
+        res        = X509_CRL_verify(crl, public_key);
+
+        if (public_key != NULL) {
+            EVP_PKEY_free(public_key);
+        }
+
+        if (res <= 0) {
+            X509_OBJECT_free_contents(&x509_obj);
+
+            return 0;
+        }
+
+        timestamp_res = X509_cmp_current_time(X509_CRL_get_nextUpdate(crl));
+
+        if (timestamp_res == 0) {
+            /* invalid nextupdate found */
+            X509_OBJECT_free_contents(&x509_obj);
+
+            return 0;
+        }
+
+        if (timestamp_res < 0) {
+            /* CRL is expired */
+            X509_OBJECT_free_contents(&x509_obj);
+
+            return 0;
+        }
+
+        X509_OBJECT_free_contents(&x509_obj);
+    }
+
+    memset((void *)&x509_obj, 0, sizeof(x509_obj));
+
+    X509_STORE_CTX_init(&store_ctx, crl_ent->crl, NULL, NULL);
+    res = X509_STORE_get_by_subject(&store_ctx, X509_LU_CRL, issuer, &x509_obj);
+    crl = x509_obj.data.crl;
+
+    if ((res > 0) && crl != NULL) {
+        int num_revoked;
+        int i;
+
+
+        num_revoked = sk_X509_REVOKED_num(X509_CRL_get_REVOKED(crl));
+
+        for (i = 0; i < num_revoked; i++) {
+            X509_REVOKED * revoked;
+            ASN1_INTEGER * asn1_serial;
+
+            revoked     = sk_X509_REVOKED_value(X509_CRL_get_REVOKED(crl), i);
+            asn1_serial = revoked->serialNumber;
+
+            if (!ASN1_INTEGER_cmp(asn1_serial, X509_get_serialNumber(cert))) {
+                X509_OBJECT_free_contents(&x509_obj);
+
+                return 0;
+            }
+        }
+
+        X509_OBJECT_free_contents(&x509_obj);
+    }
+
+    return ok;
+} /* ssl_verify_crl */
+
 int
 ssl_x509_verifyfn(int ok, X509_STORE_CTX * store) {
     char                 buf[256];
@@ -515,8 +788,17 @@ ssl_x509_verifyfn(int ok, X509_STORE_CTX * store) {
                    X509_verify_cert_error_string(err), depth, buf);
     }
 
+
+    /* right now the only thing using the evhtp argument is the crl_ent_t's, in
+     * the future this will become more generic. So here we check to see if the
+     * CRL checking is enabled, and if it is, do CRL verification.
+     */
+    if (connection->htp->arg) {
+        ok = ssl_verify_crl(ok, store, (ssl_crl_ent_t *)connection->htp->arg);
+    }
+
     return ok;
-}
+} /* ssl_x509_verifyfn */
 
 int
 ssl_x509_issuedcb(X509_STORE_CTX * ctx, X509 * x, X509 * issuer) {

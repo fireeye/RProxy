@@ -71,6 +71,7 @@ typedef struct server_cfg     server_cfg_t;
 typedef struct downstream_cfg downstream_cfg_t;
 typedef struct headers_cfg    headers_cfg_t;
 typedef struct x509_ext_cfg   x509_ext_cfg_t;
+typedef struct ssl_crl_cfg    ssl_crl_cfg_t;
 typedef struct logger_cfg     logger_cfg_t;
 
 typedef enum rule_type        rule_type;
@@ -110,6 +111,12 @@ struct rule_cfg {
 struct x509_ext_cfg {
     char * name;                 /**< the name of the header */
     char * oid;                  /**< the oid of the x509 extension to pull */
+};
+
+struct ssl_crl_cfg {
+    char         * filename;
+    char         * dirname;
+    struct timeval reload_timer;
 };
 
 /**
@@ -201,15 +208,15 @@ struct rproxy_rusage {
  * @brief main configuration structure.
  */
 struct rproxy_cfg {
-    bool            daemonize;      /**< should proxy run in background */
+    bool            daemonize;          /**< should proxy run in background */
     int             mem_trimsz;
-    int             max_nofile;     /**< max number of open file descriptors */
-    char          * rootdir;        /**< root dir to daemonize */
-    char          * user;           /**< user to run as */
-    char          * group;          /**< group to run as */
-    lztq          * servers;        /**< list of server_cfg_t's */
-    logger_cfg_t  * log;            /**< generic log configuration */
-    rproxy_rusage_t rusage;         /**< the needed resource totals */
+    int             max_nofile;         /**< max number of open file descriptors */
+    char          * rootdir;            /**< root dir to daemonize */
+    char          * user;               /**< user to run as */
+    char          * group;              /**< group to run as */
+    lztq          * servers;            /**< list of server_cfg_t's */
+    logger_cfg_t  * log;                /**< generic log configuration */
+    rproxy_rusage_t rusage;             /**< the needed resource totals */
 };
 
 /********************************************
@@ -220,10 +227,10 @@ struct rproxy_cfg {
  * @brief a downstream's connection status.
  */
 enum downstream_status {
-    downstream_status_nil = 0,      /**< connection has never been used */
-    downstream_status_active,       /**< connection is actively processing */
-    downstream_status_idle,         /**< connection is idle and available */
-    downstream_status_down          /**< connection is down and cannot be used */
+    downstream_status_nil = 0,          /**< connection has never been used */
+    downstream_status_active,           /**< connection is actively processing */
+    downstream_status_idle,             /**< connection is idle and available */
+    downstream_status_down              /**< connection is down and cannot be used */
 };
 
 enum logger_argtype {
@@ -255,6 +262,7 @@ typedef struct vhost             vhost_t;
 typedef struct logger_arg        logger_arg_t;
 typedef struct logger            logger_t;
 typedef struct pending_request_q pending_request_q_t;
+typedef struct ssl_crl_ent       ssl_crl_ent_t;
 
 typedef enum downstream_status   downstream_status;
 typedef enum logger_argtype      logger_argtype;
@@ -275,6 +283,16 @@ struct logger {
     lzlog        * log;
 
     TAILQ_HEAD(logger_args, logger_arg) args;
+};
+
+struct ssl_crl_ent {
+    ssl_crl_cfg_t * cfg;
+    rproxy_t      * rproxy;
+    evhtp_t       * htp;
+    X509_STORE    * crl;
+    event_t       * reload_timer_ev;
+    struct timespec last_file_mod;
+    struct timespec last_dir_mod;
 };
 
 struct vhost {
@@ -400,8 +418,11 @@ void downstream_connection_retry(int, short, void *);
 /********************************************
 * SSL verification callback functions
 ********************************************/
-int ssl_x509_verifyfn(int, X509_STORE_CTX *);
-int ssl_x509_issuedcb(X509_STORE_CTX *, X509 *, X509 *);
+int             ssl_x509_verifyfn(int, X509_STORE_CTX *);
+int             ssl_x509_issuedcb(X509_STORE_CTX *, X509 *, X509 *);
+ssl_crl_ent_t * ssl_crl_ent_new(evhtp_t *, ssl_crl_cfg_t *);
+
+
 
 /***********************************************
 * Request handling funcs (upstream/downstream)
