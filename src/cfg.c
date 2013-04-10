@@ -694,6 +694,8 @@ ssl_cfg_parse(cfg_t * cfg) {
         }
     }
 
+    scfg->ssl_ctx_timeout = cfg_getint(cfg, "context-timeout");
+    scfg->ssl_opts        = ssl_opts;
 
     if (cfg_getsec(cfg, "crl")) {
         ssl_crl_cfg_t * crl_config;
