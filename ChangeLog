@@ -1,3 +1,13 @@
+v2.0.15
+ o Initial CRL verification support. (d367397 Mark Ellzey)
+ o OSX returns struct timespec for stat while linux returns a time_t. This was fixed. (781e3ca Mark Ellzey)
+ o Actually add the crl config to ssl {} (ee5f428 Mark Ellzey)
+ o SSL proto opts were not being placed in the config, this got removed somehow, so I readded it. (6f9add7 Mark Ellzey)
+ o Add logging, fix leak. (04dc43c Sean Cunningham)
+ o Added locking around CRL ent checks. (7266970 Mark Ellzey)
+ o Fix pthread_mutex_init() call. (b8aea13 Mark Ellzey)
+ o Apply vhost args from main evhtp if ssl not local (18c6cc4 Mark Ellzey)
+
 v2.0.14
  o Fix bug where connection->request was not being set to NULL on error. (f7da115 Mark Ellzey)
  o use evhtp_disable_100_continue for each new evhtp. (7f0d2fd Mark Ellzey)

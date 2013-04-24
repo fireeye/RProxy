@@ -240,6 +240,7 @@ incoming connections as SSL.
         cache-enabled     = true
         cache-timeout     = 1024
         cache-size        = 65535
+        crl               = {}
     }
 
 * __enabled__
@@ -291,6 +292,33 @@ incoming connections as SSL.
 * __context-timeout__
 
     Timeout for (OpenSSL >= 1.0) session timeouts.
+
+## Server::SSL::CRL Configuration
+
+A server / vhost can be configured to use a CRL list or file which can be
+reloaded without restarting or signals. This configuration is turned off by
+default.
+
+      ssl {
+          crl {
+              file    = "/path/to/crl.pem"
+              dir     = "/path/to/crldir/"
+              reload  = { 10, 0 }
+          }
+      }
+
+* __file__
+
+   Read from a specific file for CRLs.
+
+* __dir__
+
+   Read from a specific directory for CRLs
+
+* __reload__
+
+   A timer (in secuds, useconds) to check for changes and reload the CRL
+   configuration if changes have been mae.
 
 ## Server::Vhost Configuration
 

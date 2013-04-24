@@ -1348,10 +1348,24 @@ add_vhost(lztq_elem * elem, void * arg) {
     if (vcfg->ssl_cfg != NULL) {
         /* vhost specific ssl configuration found */
         evhtp_ssl_init(htp_vhost, vcfg->ssl_cfg);
+
+        /* if CRL checking is enabled, create a new ssl_crl_ent_t and add it
+         * to the evhtp_t's arguments. XXX: in the future we should create a
+         * generic wrapper for various things we want to put in the evhtp
+         * arguments, but for now, the only thing that we care about is the
+         * CRL context.
+         */
+        if (vcfg->ssl_cfg->args) {
+            ssl_crl_cfg_t * crl_cfg = vcfg->ssl_cfg->args;
+
+            htp->arg = (void *)ssl_crl_ent_new(htp, crl_cfg);
+            assert(htp->arg != NULL);
+        }
     } else if (htp->ssl_ctx != NULL) {
         /* use the global SSL context */
         htp_vhost->ssl_ctx = htp->ssl_ctx;
         htp_vhost->ssl_cfg = htp->ssl_cfg;
+        htp_vhost->arg     = htp->arg;
     }
 
     return 0;
@@ -1395,6 +1409,19 @@ rproxy_init(evbase_t * evbase, rproxy_cfg_t * cfg) {
         if (server->ssl_cfg) {
             /* enable SSL support on this server */
             evhtp_ssl_init(htp, server->ssl_cfg);
+
+            /* if CRL checking is enabled, create a new ssl_crl_ent_t and add it
+             * to the evhtp_t's arguments. XXX: in the future we should create a
+             * generic wrapper for various things we want to put in the evhtp
+             * arguments, but for now, the only thing that we care about is the
+             * CRL context.
+             */
+            if (server->ssl_cfg->args) {
+                ssl_crl_cfg_t * crl_cfg = server->ssl_cfg->args;
+
+                htp->arg = ssl_crl_ent_new(htp, crl_cfg);
+                assert(htp->arg != NULL);
+            }
         }
 
         /* for each vhost, create a child virtual host and stick it in our main
