@@ -231,7 +231,7 @@ ssl_sha1_tostr(evhtp_ssl_t * ssl) {
     X509         * cert;
     unsigned int   n;
     unsigned char  md[EVP_MAX_MD_SIZE];
-    unsigned char* buf = NULL;
+    unsigned char*  buf = NULL;
     size_t         offset;
     size_t         nsz;
     int            sz;
@@ -242,6 +242,7 @@ ssl_sha1_tostr(evhtp_ssl_t * ssl) {
     }
 
     md_alg = EVP_sha1();
+
     if (!md_alg) {
         return NULL;
     }
@@ -676,7 +677,7 @@ ssl_crl_ent_new(evhtp_t * htp, ssl_crl_cfg_t * config) {
     crl_ent->cfg = config;
     crl_ent->htp = htp;
     crl_ent->reload_timer_ev = evtimer_new(htp->evbase, ssl_reload_timercb, crl_ent);
-    pthread_mutex_init(&crl_ent->lock);
+    pthread_mutex_init(&crl_ent->lock, NULL);
 
     ssl_crl_ent_reload(crl_ent);
     event_add(crl_ent->reload_timer_ev, &config->reload_timer);
