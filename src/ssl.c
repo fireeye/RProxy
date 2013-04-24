@@ -525,6 +525,7 @@ int
 ssl_crl_ent_reload(ssl_crl_ent_t * crl_ent) {
     X509_LOOKUP * lookup;
     X509_STORE  * old_crl;
+    logger_t    * logger;
     struct stat   file_stat;
     int           res;
 
@@ -536,11 +537,15 @@ ssl_crl_ent_reload(ssl_crl_ent_t * crl_ent) {
     if (crl_ent->cfg->filename == NULL && crl_ent->cfg->dirname == NULL) {
         return -1;
     }
+    
+    logger = (crl_ent->rproxy != NULL) ? crl_ent->rproxy->err_log : NULL;
 
     if ((res = ssl_crl_ent_should_reload(crl_ent)) <= 0) {
         /* we should error on a negative status here, but for right now we
          * figure the crl list does not need to be reloaded.
          */
+        if (res < 0) 
+            logger_log(logger, lzlog_err, "SSL: CRL should reload error:%i", res);
         return res;
     }
 
@@ -561,38 +566,32 @@ ssl_crl_ent_reload(ssl_crl_ent_t * crl_ent) {
      * in, we must do it ourselves.
      */
     if ((crl_ent->crl = X509_STORE_new()) == NULL) {
-        /* something bad happened, so add the old crl back and return an error
-         * XXX: log something here.
-         */
+        /* something bad happened, so add the old crl back and return an error */
+        logger_log(logger, lzlog_err, "SSL: CRL X509 STORE alloc failure");
         crl_ent->crl = old_crl;
         return -1;
     }
 
     if (crl_ent->cfg->filename != NULL) {
         if (stat(crl_ent->cfg->filename, &file_stat) == -1) {
-            /* XXX log error here */
+            logger_log(logger, lzlog_err, "SSL: CRL stat failed: %s", crl_ent->cfg->filename);
             X509_STORE_free(crl_ent->crl);
-
             crl_ent->crl = old_crl;
             return -1;
         }
 
         if (!S_ISREG(file_stat.st_mode)) {
-            /* not a file, XXX log error here */
+            logger_log(logger, lzlog_err, "SSL: CRL not a regular file: %s", crl_ent->cfg->filename);
             X509_STORE_free(crl_ent->crl);
-
             crl_ent->crl = old_crl;
             return -1;
         }
 
         /* attempt to add the filename to our x509 store */
         if (!(lookup = X509_STORE_add_lookup(crl_ent->crl, X509_LOOKUP_file()))) {
-            /* oops, log something here */
+            logger_log(logger, lzlog_err, "SSL: Cannot add CRL LOOKUP to store");
             X509_STORE_free(crl_ent->crl);
-
-            /* fallback to the old */
             crl_ent->crl = old_crl;
-
             return -1;
         }
 
@@ -606,27 +605,34 @@ ssl_crl_ent_reload(ssl_crl_ent_t * crl_ent) {
         crl_ent->last_file_mod = file_stat.st_mtime;
 #endif
 
-        X509_LOOKUP_load_file(lookup, crl_ent->cfg->filename, X509_FILETYPE_PEM);
+        if (!X509_LOOKUP_load_file(lookup, crl_ent->cfg->filename, X509_FILETYPE_PEM)) {
+            logger_log(logger, lzlog_err, "SSL: Cannot add CRL to store: %s", crl_ent->cfg->filename);
+            X509_STORE_free(crl_ent->crl);
+            crl_ent->crl = old_crl;
+            return -1;
+        } else {
+            logger_log(logger, lzlog_info, "SSL: CRL reloaded: %s ", crl_ent->cfg->filename);
+        }
     }
 
     if (crl_ent->cfg->dirname != NULL) {
         if (stat(crl_ent->cfg->dirname, &file_stat) == -1) {
+            logger_log(logger, lzlog_err, "SSL: CRL stat failed: %s", crl_ent->cfg->dirname);
             X509_STORE_free(crl_ent->crl);
-
             crl_ent->crl = old_crl;
             return -1;
         }
 
         if (!S_ISDIR(file_stat.st_mode)) {
+            logger_log(logger, lzlog_err, "SSL: CRL not a directory: %s", crl_ent->cfg->dirname);
             X509_STORE_free(crl_ent->crl);
-
             crl_ent->crl = old_crl;
             return -1;
         }
 
         if (!(lookup = X509_STORE_add_lookup(crl_ent->crl, X509_LOOKUP_hash_dir()))) {
+            logger_log(logger, lzlog_err, "SSL: Cannot add CRL LOOKUP to store");
             X509_STORE_free(crl_ent->crl);
-
             crl_ent->crl = old_crl;
             return -1;
         }
@@ -638,8 +644,18 @@ ssl_crl_ent_reload(ssl_crl_ent_t * crl_ent) {
 #endif
 
 
-        X509_LOOKUP_add_dir(lookup, crl_ent->cfg->dirname, X509_FILETYPE_PEM);
+        if (!X509_LOOKUP_add_dir(lookup, crl_ent->cfg->dirname, X509_FILETYPE_PEM)) {
+            logger_log(logger, lzlog_err, "SSL: Cannot add CRL directory to store: %s", crl_ent->cfg->dirname);
+            X509_STORE_free(crl_ent->crl);
+            crl_ent->crl = old_crl;
+            return -1;
+        } else {
+            logger_log(logger, lzlog_info, "SSL: CRL directory reloaded: %s ", crl_ent->cfg->dirname);
+        }
     }
+    
+    if (old_crl)
+        X509_STORE_free(old_crl);
 
     return 0;
 } /* ssl_crl_ent_reload */
@@ -679,8 +695,49 @@ ssl_crl_ent_new(evhtp_t * htp, ssl_crl_cfg_t * config) {
     return crl_ent;
 }
 
+ /*
+    ssl_verify_crl was inspired by Apache's mod_ssl.  That code is licensed 
+    under the Apache 2.0 license:
+    
+    http://www.apache.org/licenses/LICENSE-2.0
+    
+    Following are comments lifted from the original mod_ssl code:
+ 
+     * OpenSSL provides the general mechanism to deal with CRLs but does not
+     * use them automatically when verifying certificates, so we do it
+     * explicitly here. We will check the CRL for the currently checked
+     * certificate, if there is such a CRL in the store.
+     *
+     * We come through this procedure for each certificate in the certificate
+     * chain, starting with the root-CA's certificate. At each step we've to
+     * both verify the signature on the CRL (to make sure it's a valid CRL)
+     * and it's revocation list (to make sure the current certificate isn't
+     * revoked).  But because to check the signature on the CRL we need the
+     * public key of the issuing CA certificate (which was already processed
+     * one round before), we've a little problem. But we can both solve it and
+     * at the same time optimize the processing by using the following
+     * verification scheme (idea and code snippets borrowed from the GLOBUS
+     * project):
+     *
+     * 1. We'll check the signature of a CRL in each step when we find a CRL
+     *    through the _subject_ name of the current certificate. This CRL
+     *    itself will be needed the first time in the next round, of course.
+     *    But we do the signature processing one round before this where the
+     *    public key of the CA is available.
+     *
+     * 2. We'll check the revocation list of a CRL in each step when
+     *    we find a CRL through the _issuer_ name of the current certificate.
+     *    This CRLs signature was then already verified one round before.
+     *
+     * This verification scheme allows a CA to revoke its own certificate as
+     * well, of course.
+     */
+
+
 static int
-ssl_verify_crl(int ok, X509_STORE_CTX * ctx, ssl_crl_ent_t * crl_ent) {
+ssl_verify_crl(int ok, X509_STORE_CTX * ctx, ssl_crl_ent_t * crl_ent, logger_t* logger) {
+    const size_t   kSz = 255;
+    char           buf[kSz+1];
     X509         * cert;
     X509_NAME    * subject;
     X509_NAME    * issuer;
@@ -703,8 +760,8 @@ ssl_verify_crl(int ok, X509_STORE_CTX * ctx, ssl_crl_ent_t * crl_ent) {
     X509_STORE_CTX_init(&store_ctx, crl_ent->crl, NULL, NULL);
     res     = X509_STORE_get_by_subject(&store_ctx, X509_LU_CRL, subject, &x509_obj);
     crl     = x509_obj.data.crl;
-
-    if ((res > 0) && crl != NULL) {
+    
+    if (res > 0 && crl) {
         public_key = X509_get_pubkey(cert);
 
         res        = X509_CRL_verify(crl, public_key);
@@ -715,7 +772,7 @@ ssl_verify_crl(int ok, X509_STORE_CTX * ctx, ssl_crl_ent_t * crl_ent) {
 
         if (res <= 0) {
             X509_OBJECT_free_contents(&x509_obj);
-
+            logger_log(logger, lzlog_err, "SSL: CRL validation failed:%i:%s", res, X509_NAME_oneline(subject, buf, kSz));
             return 0;
         }
 
@@ -724,14 +781,14 @@ ssl_verify_crl(int ok, X509_STORE_CTX * ctx, ssl_crl_ent_t * crl_ent) {
         if (timestamp_res == 0) {
             /* invalid nextupdate found */
             X509_OBJECT_free_contents(&x509_obj);
-
+            logger_log(logger, lzlog_err, "SSL: CRL nextupdate invalid:%s", X509_NAME_oneline(subject, buf, kSz));
             return 0;
         }
 
         if (timestamp_res < 0) {
             /* CRL is expired */
             X509_OBJECT_free_contents(&x509_obj);
-
+            logger_log(logger, lzlog_err, "SSL: CRL expired:%s", X509_NAME_oneline(subject, buf, kSz));
             return 0;
         }
 
@@ -760,13 +817,18 @@ ssl_verify_crl(int ok, X509_STORE_CTX * ctx, ssl_crl_ent_t * crl_ent) {
 
             if (!ASN1_INTEGER_cmp(asn1_serial, X509_get_serialNumber(cert))) {
                 X509_OBJECT_free_contents(&x509_obj);
-
+                logger_log(logger, lzlog_warn, "SSL: Certificate revoked by CRL:%s", X509_NAME_oneline(subject, buf, kSz));
                 return 0;
             }
         }
 
         X509_OBJECT_free_contents(&x509_obj);
     }
+
+#ifdef RPROXY_DEBUG
+    if (ok)
+        logger_log(logger, lzlog_debug, "SSL: CRL ok", X509_NAME_oneline(subject, buf, kSz));
+#endif
 
     return ok;
 } /* ssl_verify_crl */
@@ -780,6 +842,7 @@ ssl_x509_verifyfn(int ok, X509_STORE_CTX * store) {
     SSL                * ssl;
     evhtp_connection_t * connection;
     evhtp_ssl_cfg_t    * ssl_cfg;
+    rproxy_t           * rproxy;
 
     err_cert   = X509_STORE_CTX_get_current_cert(store);
     err        = X509_STORE_CTX_get_error(store);
@@ -790,20 +853,18 @@ ssl_x509_verifyfn(int ok, X509_STORE_CTX * store) {
 
     connection = SSL_get_app_data(ssl);
     ssl_cfg    = connection->htp->ssl_cfg;
-
+    rproxy     = evthr_get_aux(connection->thread);
+    assert(rproxy != NULL);
+    
     if (depth > ssl_cfg->verify_depth) {
         ok  = 0;
         err = X509_V_ERR_CERT_CHAIN_TOO_LONG;
 
         X509_STORE_CTX_set_error(store, err);
     }
+    
 
     if (!ok) {
-        rproxy_t * rproxy;
-
-        rproxy = evthr_get_aux(connection->thread);
-        assert(rproxy != NULL);
-
         logger_log(rproxy->err_log, lzlog_err,
                    "SSL: verify error:num=%d:%s:depth=%d:%s", err,
                    X509_verify_cert_error_string(err), depth, buf);
@@ -815,7 +876,7 @@ ssl_x509_verifyfn(int ok, X509_STORE_CTX * store) {
      * CRL checking is enabled, and if it is, do CRL verification.
      */
     if (connection->htp->arg) {
-        ok = ssl_verify_crl(ok, store, (ssl_crl_ent_t *)connection->htp->arg);
+        ok = ssl_verify_crl(ok, store, (ssl_crl_ent_t *)connection->htp->arg, rproxy->err_log);
     }
 
     return ok;
