@@ -653,8 +653,12 @@ ssl_reload_timercb(int sock, short which, void * arg) {
     }
 
     /* TODO: log stuff here */
-    ssl_crl_ent_reload(crl_ent);
-    event_add(crl_ent->reload_timer_ev, &crl_ent->cfg->reload_timer);
+    pthread_mutex_lock(&crl_ent->lock);
+    {
+        ssl_crl_ent_reload(crl_ent);
+        event_add(crl_ent->reload_timer_ev, &crl_ent->cfg->reload_timer);
+    }
+    pthread_mutex_unlock(&crl_ent->lock);
 }
 
 ssl_crl_ent_t *
@@ -672,6 +676,7 @@ ssl_crl_ent_new(evhtp_t * htp, ssl_crl_cfg_t * config) {
     crl_ent->cfg = config;
     crl_ent->htp = htp;
     crl_ent->reload_timer_ev = evtimer_new(htp->evbase, ssl_reload_timercb, crl_ent);
+    pthread_mutex_init(&crl_ent->lock);
 
     ssl_crl_ent_reload(crl_ent);
     event_add(crl_ent->reload_timer_ev, &config->reload_timer);
@@ -815,7 +820,13 @@ ssl_x509_verifyfn(int ok, X509_STORE_CTX * store) {
      * CRL checking is enabled, and if it is, do CRL verification.
      */
     if (connection->htp->arg) {
-        ok = ssl_verify_crl(ok, store, (ssl_crl_ent_t *)connection->htp->arg);
+        ssl_crl_ent_t * crl_ent = (ssl_crl_ent_t *)connection->htp->arg;
+
+        pthread_mutex_lock(&crl_ent->lock);
+        {
+            ok = ssl_verify_crl(ok, store, (ssl_crl_ent_t *)connection->htp->arg);
+        }
+        pthread_mutex_unlock(&crl_ent->lock);
     }
 
     return ok;

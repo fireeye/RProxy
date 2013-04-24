@@ -25,6 +25,7 @@
 #include <confuse.h>
 #include <event2/dns.h>
 #include <evhtp.h>
+#include <pthread.h>
 
 #include "lzq.h"
 #include "lzlog.h"
@@ -298,6 +299,7 @@ struct ssl_crl_ent {
     time_t last_file_mod;
     time_t last_dir_mod;
 #endif
+    pthread_mutex_t lock; /**< lock to make sure we don't overwrite during a verification */
 };
 
 struct vhost {
