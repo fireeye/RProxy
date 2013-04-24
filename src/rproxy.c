@@ -1365,6 +1365,7 @@ add_vhost(lztq_elem * elem, void * arg) {
         /* use the global SSL context */
         htp_vhost->ssl_ctx = htp->ssl_ctx;
         htp_vhost->ssl_cfg = htp->ssl_cfg;
+        htp_vhost->arg     = htp->arg;
     }
 
     return 0;
