@@ -166,10 +166,17 @@ logger_log_request_tostr(logger_t * logger, request_t * request, evbuf_t * buf) 
             }
             break;
             case logger_argtype_meth:
+            {
                 /* log the method of the request */
-                evbuffer_add(buf, htparser_get_methodstr(upstream_c->parser),
-                             strlen(htparser_get_methodstr(upstream_c->parser)));
-                break;
+                const char * methodstr = htparser_get_methodstr(upstream_c->parser);
+
+                if (methodstr == NULL) {
+                    methodstr = "-";
+                }
+
+                evbuffer_add(buf, methodstr, strlen(methodstr));
+            }
+            break;
             case logger_argtype_uri:
                 /* log the URI requested by the upstream */
                 if (upstream_r->uri && upstream_r->uri->path &&
