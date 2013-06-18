@@ -167,7 +167,7 @@ logger_log_request_tostr(logger_t * logger, request_t * request, evbuf_t * buf) 
             break;
             case logger_argtype_meth:
             {
-                const char * methstr - htparser_get_methodstr(upstream_c->parser);
+                const char * methstr = htparser_get_methodstr(upstream_c->parser);
 
                 if (methstr != NULL) {
                     /* log the method of the request */
