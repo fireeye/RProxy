@@ -1,3 +1,9 @@
+v2.0.16
+ o Fix potential null deref with method logging. (d26ca8f Mark Ellzey)
+ o Set method str to '-' if method is unknown. (f573411 Mark Ellzey)
+ o Ability to turn off nagle on client/listener/downstream sockets. (0b1b4db Mark Ellzey)
+ o Bugfix for methstr assignment. (fc5a326 Mark Ellzey)
+
 v2.0.15
  o Initial CRL verification support. (d367397 Mark Ellzey)
  o OSX returns struct timespec for stat while linux returns a time_t. This was fixed. (781e3ca Mark Ellzey)
