@@ -996,6 +996,15 @@ upstream_pre_accept(evhtp_connection_t * up_conn, void * arg) {
         return EVHTP_RES_ERROR;
     }
 
+    if (rproxy->server_cfg->disable_client_nagle == 1) {
+        /* config has requested that client sockets have the nagle algorithm
+         * turned off.
+         */
+
+        setsockopt(up_conn->sock, IPPROTO_TCP, TCP_NODELAY, (int[]) { 1 }, sizeof(int));
+    }
+
+
     return EVHTP_RES_OK;
 }
 
@@ -1460,6 +1469,17 @@ rproxy_init(evbase_t * evbase, rproxy_cfg_t * cfg) {
                     strerror(errno));
             exit(-1);
         }
+
+        if (server->disable_server_nagle == 1) {
+            /* disable the tcp nagle algorithm for the listener socket */
+            evutil_socket_t sock;
+
+            sock = evconnlistener_get_fd(htp->server);
+            assert(sock >= 0);
+
+            setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, (int[]) { 1 }, sizeof(int));
+        }
+
 
         serv_temp = lztq_next(serv_elem);
     }

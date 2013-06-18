@@ -1234,8 +1234,14 @@ downstream_connection_eventcb(evbev_t * bev, short events, void * arg) {
         connection->sport = ntohs(sin.sin_port);
 
         res = downstream_connection_set_idle(connection);
-
         assert(res >= 0);
+
+        if (rproxy->server_cfg->disable_downstream_nagle == 1) {
+            /* disable nagle algorithm for this downstream connection.
+             */
+            setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, (int[]) { 1 }, sizeof(int));
+        }
+
         return;
     }
 
