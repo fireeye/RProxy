@@ -25,12 +25,13 @@
 #include <confuse.h>
 #include <event2/dns.h>
 #include <evhtp.h>
+#include <netinet/tcp.h>
 #include <pthread.h>
 
 #include "lzq.h"
 #include "lzlog.h"
 
-#define RPROXY_VERSION "2.0.15"
+#define RPROXY_VERSION "2.0.16"
 
 #if EVHTP_VERSION_MAJOR <= 1
 #if EVHTP_VERSION_MINOR <= 2
@@ -156,37 +157,41 @@ struct downstream_cfg {
 
 struct vhost_cfg {
     evhtp_ssl_cfg_t * ssl_cfg;
-    lztq            * rule_cfgs;    /**< list of rule_cfg_t's */
-    lztq            * rules;        /* list of rule_t's */
+    lztq            * rule_cfgs;        /**< list of rule_cfg_t's */
+    lztq            * rules;            /* list of rule_t's */
     char            * server_name;
-    lztq            * aliases;      /**< other hostnames this vhost is associated with */
-    lztq            * strip_hdrs;   /**< headers to strip out from downstream responses */
-    logger_cfg_t    * req_log;      /* request logging configuration */
-    logger_cfg_t    * err_log;      /* error logging configuration */
-    headers_cfg_t   * headers;      /**< headers which are added to the backend request */
+    lztq            * aliases;          /**< other hostnames this vhost is associated with */
+    lztq            * strip_hdrs;       /**< headers to strip out from downstream responses */
+    logger_cfg_t    * req_log;          /* request logging configuration */
+    logger_cfg_t    * err_log;          /* error logging configuration */
+    headers_cfg_t   * headers;          /**< headers which are added to the backend request */
 };
 
 /**
  * @brief configuration for a single listening frontend server.
  */
 struct server_cfg {
-    char   * bind_addr;             /**< address to bind on */
-    uint16_t bind_port;             /**< port to bind on */
-    int      num_threads;           /**< number of worker threads to start */
-    int      max_pending;           /**< max pending requests before new connections are dropped */
-    int      listen_backlog;        /**< listen backlog */
-    size_t   high_watermark;        /**< upstream high-watermark */
+    char   * bind_addr;                 /**< address to bind on */
+    uint16_t bind_port;                 /**< port to bind on */
+    int      num_threads;               /**< number of worker threads to start */
+    int      max_pending;               /**< max pending requests before new connections are dropped */
+    int      listen_backlog;            /**< listen backlog */
+    size_t   high_watermark;            /**< upstream high-watermark */
 
-    struct timeval read_timeout;    /**< time to wait for reading before client is dropped */
-    struct timeval write_timeout;   /**< time to wait for writing before client is dropped */
-    struct timeval pending_timeout; /**< time to wait for a downstream to become available for a connection */
+    struct timeval read_timeout;        /**< time to wait for reading before client is dropped */
+    struct timeval write_timeout;       /**< time to wait for writing before client is dropped */
+    struct timeval pending_timeout;     /**< time to wait for a downstream to become available for a connection */
 
-    rproxy_cfg_t    * rproxy_cfg;   /**< parent rproxy configuration */
-    evhtp_ssl_cfg_t * ssl_cfg;      /**< if enabled, the ssl configuration */
-    lztq            * downstreams;  /**< list of downstream_cfg_t's */
-    lztq            * vhosts;       /**< list of vhost_cfg_t's */
+    rproxy_cfg_t    * rproxy_cfg;       /**< parent rproxy configuration */
+    evhtp_ssl_cfg_t * ssl_cfg;          /**< if enabled, the ssl configuration */
+    lztq            * downstreams;      /**< list of downstream_cfg_t's */
+    lztq            * vhosts;           /**< list of vhost_cfg_t's */
     logger_cfg_t    * req_log_cfg;
     logger_cfg_t    * err_log_cfg;
+
+    int disable_server_nagle;           /**< disable nagle for listening sockets */
+    int disable_client_nagle;           /**< disable nagle for upstream sockets */
+    int disable_downstream_nagle;       /**< disable nagle for downstream sockets */
 };
 
 
@@ -386,12 +391,12 @@ struct rproxy {
     struct evdns_base * dns_base;
     event_t           * request_ev;
     server_cfg_t      * server_cfg;
-    logger_t          * request_log; /* server specific request logging */
-    logger_t          * error_log;   /* server specific error logging */
+    logger_t          * request_log;              /* server specific request logging */
+    logger_t          * error_log;                /* server specific error logging */
     lztq              * rules;
-    lztq              * downstreams; /**< list of all downstream_t's */
-    int                 n_pending;   /**< number of pending requests */
-    pending_request_q_t pending;     /**< list of pending upstream request_t's */
+    lztq              * downstreams;              /**< list of all downstream_t's */
+    int                 n_pending;                /**< number of pending requests */
+    pending_request_q_t pending;                  /**< list of pending upstream request_t's */
     logger_t          * req_log;
     logger_t          * err_log;
 };
