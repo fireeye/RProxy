@@ -27,6 +27,25 @@
 #include "rproxy.h"
 
 void
+redir_us_readcb(evbev_t * bev, void * arg) {
+    request_t * request = arg;
+
+    bufferevent_write_buffer(request->downstream_bev,
+                             bufferevent_get_input(bev));
+    return;
+}
+
+void
+redir_us_eventcb(evbev_t * bev, short events, void * arg) {
+    request_t * request = arg;
+
+    bufferevent_free(request->upstream_bev);
+    bufferevent_free(request->downstream_bev);
+
+    request_free(request);
+}
+
+void
 redir_readcb(evbev_t * bev, void * arg) {
     /* data was read from the redir downstream, so we must send this data to the
      * upstream bufferevent.
@@ -325,6 +344,11 @@ proxy_parser_headers_complete(htparser * p) {
              * once the connection has been established.
              */
             bufferevent_write_buffer(conn, request_buf);
+
+            bufferevent_setcb(upstream_bev,
+                              redir_us_readcb, NULL,
+                              redir_us_eventcb, request);
+
 
             request->downstream_bev = conn;
 
