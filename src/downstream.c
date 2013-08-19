@@ -315,6 +315,13 @@ proxy_parser_headers_complete(htparser * p) {
              */
             request->downstream_conn->request = NULL;
 
+            /* append a header to notify whatever server is getting the
+             * redirected request that the original request was redirected.
+             */
+            evhtp_headers_add_header(upstream_r->headers_in,
+                                     evhtp_header_new("X-Redirected-Via",
+                                                      rule->config->name, 0, 0));
+
             /* generate the request which will be sent to the redir host once it
              * establishes.
              */
