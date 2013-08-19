@@ -236,6 +236,9 @@ proxy_parser_headers_complete(htparser * p) {
          */
         const char * redir_host;
 
+        logger_log_request_error(rproxy->err_log, request,
+                                 "server redirect, attempting connection");
+
         if ((redir_host = evhtp_header_find(upstream_r->headers_out,
                                             "x-internal-redirect"))) {
             evbev_t * conn;
@@ -247,6 +250,9 @@ proxy_parser_headers_complete(htparser * p) {
             char    * host;
             char    * cp;
             uint16_t  port;
+
+            logger_log(rproxy->err_log, lzlog_info,
+                       "found x-internal-redirect header value '%s'", redir_host);
 
             /*
              * make sure this value of this redirect is allowed if a filter is
@@ -340,9 +346,6 @@ proxy_parser_headers_complete(htparser * p) {
                               redir_eventcb, request);
             bufferevent_enable(conn, EV_READ | EV_WRITE);
 
-            /* send the initial request to the downstream which will be written
-             * once the connection has been established.
-             */
             bufferevent_write_buffer(conn, request_buf);
 
             bufferevent_setcb(upstream_bev,
@@ -357,6 +360,14 @@ proxy_parser_headers_complete(htparser * p) {
 
             /* signal htparser_run to stop executing other callbacks */
             return -1;
+        } else {
+            logger_log(rproxy->err_log, lzlog_info,
+                       "no x-internal-redirect header found!");
+        }
+    } else {
+        if (res_code == 377) {
+            logger_log(rproxy->err_log, lzlog_info,
+                       "got a redirect, but no matching rule");
         }
     }
 
