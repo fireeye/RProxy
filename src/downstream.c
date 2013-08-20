@@ -26,18 +26,40 @@
 
 #include "rproxy.h"
 
-void
-redir_us_readcb(evbev_t * bev, void * arg) {
+
+/**
+ * @brief once IO has started on a redirected pipe, this will read data from the
+ *        upstream and pipe it to the newly connected downstream.
+ *
+ * @param bev
+ * @param arg
+ */
+static void
+redirected_upstream_readcb(evbev_t * bev, void * arg) {
     request_t * request = arg;
 
+    /* simply write the buffer from the upstream to the downstream bufferevent.
+     */
     bufferevent_write_buffer(request->downstream_bev,
                              bufferevent_get_input(bev));
     return;
 }
 
-void
-redir_us_eventcb(evbev_t * bev, short events, void * arg) {
+/**
+ * @brief called if there is any error on the upstream socket when using the
+ *        redirect pipe.
+ *
+ * @param bev
+ * @param events
+ * @param arg
+ */
+static void
+redirected_upstream_eventcb(evbev_t * bev, short events, void * arg) {
     request_t * request = arg;
+
+    /* client aborted the connection, free and close both sides of the
+     * connection.
+     */
 
     bufferevent_free(request->upstream_bev);
     bufferevent_free(request->downstream_bev);
@@ -45,8 +67,15 @@ redir_us_eventcb(evbev_t * bev, short events, void * arg) {
     request_free(request);
 }
 
-void
-redir_readcb(evbev_t * bev, void * arg) {
+/**
+ * @brief any IO from a redirected connection will call this function which just
+ *        writes the data back to the upstream.
+ *
+ * @param bev
+ * @param arg
+ */
+static void
+redirected_downstream_readcb(evbev_t * bev, void * arg) {
     /* data was read from the redir downstream, so we must send this data to the
      * upstream bufferevent.
      */
@@ -58,13 +87,16 @@ redir_readcb(evbev_t * bev, void * arg) {
     bufferevent_write_buffer(request->upstream_bev, bufferevent_get_input(bev));
 }
 
-void
-redir_writecb(evbev_t * bev, void * arg) {
-    return;
-}
-
-void
-redir_eventcb(evbev_t * bev, short events, void * arg) {
+/**
+ * @brief called once a redirected connection has been established, or if any
+ *        error occurs on the downstream socket.
+ *
+ * @param bev
+ * @param events
+ * @param arg
+ */
+static void
+redirected_downstream_eventcb(evbev_t * bev, short events, void * arg) {
     request_t * request;
 
     request = arg;
@@ -348,16 +380,23 @@ proxy_parser_headers_complete(htparser * p) {
                                                 AF_INET, host, port);
 
             bufferevent_setcb(conn,
-                              redir_readcb,
-                              redir_writecb,
-                              redir_eventcb, request);
+                              redirected_downstream_readcb,
+                              NULL, redirected_downstream_eventcb, request);
+
             bufferevent_enable(conn, EV_READ | EV_WRITE);
 
+            /* the above util_request_to_evbuffer() generated this data, we put
+             * it in the new bufferevent's output queue which will be sent once
+             * the connection has been established.
+             */
             bufferevent_write_buffer(conn, request_buf);
 
+            /* once the connection has been established, these callbacks pipe
+             * the IO back and forth.
+             */
             bufferevent_setcb(upstream_bev,
-                              redir_us_readcb, NULL,
-                              redir_us_eventcb, request);
+                              redirected_upstream_readcb, NULL,
+                              redirected_upstream_eventcb, request);
 
 
             request->downstream_bev = conn;
