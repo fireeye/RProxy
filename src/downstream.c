@@ -26,8 +26,56 @@
 
 #include "rproxy.h"
 
-void
-redir_readcb(evbev_t * bev, void * arg) {
+
+/**
+ * @brief once IO has started on a redirected pipe, this will read data from the
+ *        upstream and pipe it to the newly connected downstream.
+ *
+ * @param bev
+ * @param arg
+ */
+static void
+redirected_upstream_readcb(evbev_t * bev, void * arg) {
+    request_t * request = arg;
+
+    /* simply write the buffer from the upstream to the downstream bufferevent.
+     */
+    bufferevent_write_buffer(request->downstream_bev,
+                             bufferevent_get_input(bev));
+    return;
+}
+
+/**
+ * @brief called if there is any error on the upstream socket when using the
+ *        redirect pipe.
+ *
+ * @param bev
+ * @param events
+ * @param arg
+ */
+static void
+redirected_upstream_eventcb(evbev_t * bev, short events, void * arg) {
+    request_t * request = arg;
+
+    /* client aborted the connection, free and close both sides of the
+     * connection.
+     */
+
+    bufferevent_free(request->upstream_bev);
+    bufferevent_free(request->downstream_bev);
+
+    request_free(request);
+}
+
+/**
+ * @brief any IO from a redirected connection will call this function which just
+ *        writes the data back to the upstream.
+ *
+ * @param bev
+ * @param arg
+ */
+static void
+redirected_downstream_readcb(evbev_t * bev, void * arg) {
     /* data was read from the redir downstream, so we must send this data to the
      * upstream bufferevent.
      */
@@ -39,13 +87,16 @@ redir_readcb(evbev_t * bev, void * arg) {
     bufferevent_write_buffer(request->upstream_bev, bufferevent_get_input(bev));
 }
 
-void
-redir_writecb(evbev_t * bev, void * arg) {
-    return;
-}
-
-void
-redir_eventcb(evbev_t * bev, short events, void * arg) {
+/**
+ * @brief called once a redirected connection has been established, or if any
+ *        error occurs on the downstream socket.
+ *
+ * @param bev
+ * @param events
+ * @param arg
+ */
+static void
+redirected_downstream_eventcb(evbev_t * bev, short events, void * arg) {
     request_t * request;
 
     request = arg;
@@ -217,6 +268,9 @@ proxy_parser_headers_complete(htparser * p) {
          */
         const char * redir_host;
 
+        logger_log_request_error(rproxy->err_log, request,
+                                 "server redirect, attempting connection");
+
         if ((redir_host = evhtp_header_find(upstream_r->headers_out,
                                             "x-internal-redirect"))) {
             evbev_t * conn;
@@ -228,6 +282,9 @@ proxy_parser_headers_complete(htparser * p) {
             char    * host;
             char    * cp;
             uint16_t  port;
+
+            logger_log(rproxy->err_log, lzlog_info,
+                       "found x-internal-redirect header value '%s'", redir_host);
 
             /*
              * make sure this value of this redirect is allowed if a filter is
@@ -290,6 +347,13 @@ proxy_parser_headers_complete(htparser * p) {
              */
             request->downstream_conn->request = NULL;
 
+            /* append a header to notify whatever server is getting the
+             * redirected request that the original request was redirected.
+             */
+            evhtp_headers_add_header(upstream_r->headers_in,
+                                     evhtp_header_new("X-Redirected-Via",
+                                                      rule->config->name, 0, 0));
+
             /* generate the request which will be sent to the redir host once it
              * establishes.
              */
@@ -316,15 +380,24 @@ proxy_parser_headers_complete(htparser * p) {
                                                 AF_INET, host, port);
 
             bufferevent_setcb(conn,
-                              redir_readcb,
-                              redir_writecb,
-                              redir_eventcb, request);
+                              redirected_downstream_readcb,
+                              NULL, redirected_downstream_eventcb, request);
+
             bufferevent_enable(conn, EV_READ | EV_WRITE);
 
-            /* send the initial request to the downstream which will be written
-             * once the connection has been established.
+            /* the above util_request_to_evbuffer() generated this data, we put
+             * it in the new bufferevent's output queue which will be sent once
+             * the connection has been established.
              */
             bufferevent_write_buffer(conn, request_buf);
+
+            /* once the connection has been established, these callbacks pipe
+             * the IO back and forth.
+             */
+            bufferevent_setcb(upstream_bev,
+                              redirected_upstream_readcb, NULL,
+                              redirected_upstream_eventcb, request);
+
 
             request->downstream_bev = conn;
 
@@ -333,6 +406,14 @@ proxy_parser_headers_complete(htparser * p) {
 
             /* signal htparser_run to stop executing other callbacks */
             return -1;
+        } else {
+            logger_log(rproxy->err_log, lzlog_info,
+                       "no x-internal-redirect header found!");
+        }
+    } else {
+        if (res_code == 377) {
+            logger_log(rproxy->err_log, lzlog_info,
+                       "got a redirect, but no matching rule");
         }
     }
 
