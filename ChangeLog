@@ -1,3 +1,9 @@
+v2.0.17
+ o Fixes for redirection and client socket handling. (0f09bfe Mark Ellzey)
+ o Extra logging for redirection responses. (05d9cb8 Mark Ellzey)
+ o Append X-Redirected-Via for redirected requests (06613e7 Mark Ellzey)
+ o redirect cleanup and documentation (f81fa6e Mark Ellzey)
+
 v2.0.16
  o Fix potential null deref with method logging. (d26ca8f Mark Ellzey)
  o Set method str to '-' if method is unknown. (f573411 Mark Ellzey)
