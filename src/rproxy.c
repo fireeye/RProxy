@@ -1293,6 +1293,15 @@ add_callback_rule(lztq_elem * elem, void * arg) {
         exit(EXIT_FAILURE);
     }
 
+    if (rule->ratelim_cfg != NULL) {
+        rule->ratelim_group = evratelim_group_new(htp->evbase,
+                                                  rule->ratelim_cfg->read_rate,
+                                                  rule->ratelim_cfg->write_rate);
+    } else {
+        rule->ratelim_group = rule->parent_vhost_cfg->ratelim_group;
+    }
+
+
     /* if one of the callbacks matches, upstream_request_start will be called
      * with the argument of this rule_cfg_t
      */
@@ -1300,7 +1309,7 @@ add_callback_rule(lztq_elem * elem, void * arg) {
                    upstream_request_start, rule);
 
     return 0;
-}
+} /* add_callback_rule */
 
 static int
 add_vhost_name(lztq_elem * elem, void * arg) {
@@ -1325,6 +1334,15 @@ add_vhost(lztq_elem * elem, void * arg) {
     /* disable 100-continue responses, we let the downstreams deal with this.
      */
     evhtp_disable_100_continue(htp_vhost);
+
+    if (vcfg->ratelim_cfg != NULL) {
+        vcfg->ratelim_group = evratelim_group_new(htp->evbase,
+                                                  vcfg->ratelim_cfg->read_rate,
+                                                  vcfg->ratelim_cfg->write_rate);
+    } else {
+        vcfg->ratelim_group = vcfg->parent_server_cfg->ratelim_group;
+    }
+
 
     /* for each rule, create a evhtp callback with the defined type */
     lztq_for_each(vcfg->rule_cfgs, add_callback_rule, htp_vhost);
@@ -1431,6 +1449,12 @@ rproxy_init(evbase_t * evbase, rproxy_cfg_t * cfg) {
                 htp->arg = ssl_crl_ent_new(htp, crl_cfg);
                 assert(htp->arg != NULL);
             }
+        }
+
+        if (server->ratelim_cfg != NULL) {
+            server->ratelim_group = evratelim_group_new(evbase,
+                                                        server->ratelim_cfg->read_rate,
+                                                        server->ratelim_cfg->write_rate);
         }
 
         /* for each vhost, create a child virtual host and stick it in our main

@@ -76,10 +76,16 @@ typedef struct headers_cfg    headers_cfg_t;
 typedef struct x509_ext_cfg   x509_ext_cfg_t;
 typedef struct ssl_crl_cfg    ssl_crl_cfg_t;
 typedef struct logger_cfg     logger_cfg_t;
+typedef struct ratelimit_cfg  ratelimit_cfg_t;
 
 typedef enum rule_type        rule_type;
 typedef enum lb_method        lb_method;
 typedef enum logger_type      logger_type;
+
+struct ratelimit_cfg {
+    size_t read_rate;
+    size_t write_rate;
+};
 
 struct logger_cfg {
     lzlog_level level;
@@ -105,6 +111,8 @@ struct rule_cfg {
     int               has_up_write_timeout;
     struct timeval    up_read_timeout;
     struct timeval    up_write_timeout;
+    vhost_cfg_t     * parent_vhost_cfg;
+    ratelimit_cfg_t * ratelim_cfg;
     evratelim_group * ratelim_group;
 };
 
@@ -167,7 +175,9 @@ struct vhost_cfg {
     logger_cfg_t    * req_log;          /* request logging configuration */
     logger_cfg_t    * err_log;          /* error logging configuration */
     headers_cfg_t   * headers;          /**< headers which are added to the backend request */
+    ratelimit_cfg_t * ratelim_cfg;
     evratelim_group * ratelim_group;
+    server_cfg_t    * parent_server_cfg;
 };
 
 /**
@@ -196,6 +206,7 @@ struct server_cfg {
     int disable_client_nagle;           /**< disable nagle for upstream sockets */
     int disable_downstream_nagle;       /**< disable nagle for downstream sockets */
 
+    ratelimit_cfg_t * ratelim_cfg;
     evratelim_group * ratelim_group;
 };
 

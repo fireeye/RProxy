@@ -17,6 +17,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <limits.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -29,6 +30,12 @@
  * determine if the system settings can handle what is configured.
  */
 static rproxy_rusage_t _rusage = { 0, 0, 0 };
+
+static cfg_opt_t       ratelimit_opts[] = {
+    CFG_INT("read",  UINT_MAX, CFGF_NONE),
+    CFG_INT("write", UINT_MAX, CFGF_NONE),
+    CFG_END()
+};
 
 static cfg_opt_t       ssl_crl_opts[] = {
     CFG_STR("file",        NULL,         CFGF_NONE),
@@ -105,27 +112,29 @@ static cfg_opt_t       headers_opts[] = {
 };
 
 static cfg_opt_t       rule_opts[] = {
-    CFG_STR("uri-match",                   NULL,         CFGF_NODEFAULT),
-    CFG_STR("uri-gmatch",                  NULL,         CFGF_NODEFAULT),
-    CFG_STR("uri-rmatch",                  NULL,         CFGF_NODEFAULT),
-    CFG_STR_LIST("downstreams",            NULL,         CFGF_NODEFAULT),
-    CFG_STR("lb-method",                   "rtt",        CFGF_NONE),
-    CFG_SEC("headers",                     headers_opts, CFGF_NODEFAULT),
-    CFG_INT_LIST("upstream-read-timeout",  NULL,         CFGF_NODEFAULT),
-    CFG_INT_LIST("upstream-write-timeout", NULL,         CFGF_NODEFAULT),
-    CFG_BOOL("passthrough",                cfg_false,    CFGF_NONE),
-    CFG_BOOL("allow-redirect",             cfg_false,    CFGF_NONE),
-    CFG_STR_LIST("redirect-filter",        NULL,         CFGF_NODEFAULT),
+    CFG_STR("uri-match",                   NULL,           CFGF_NODEFAULT),
+    CFG_STR("uri-gmatch",                  NULL,           CFGF_NODEFAULT),
+    CFG_STR("uri-rmatch",                  NULL,           CFGF_NODEFAULT),
+    CFG_STR_LIST("downstreams",            NULL,           CFGF_NODEFAULT),
+    CFG_STR("lb-method",                   "rtt",          CFGF_NONE),
+    CFG_SEC("headers",                     headers_opts,   CFGF_NODEFAULT),
+    CFG_INT_LIST("upstream-read-timeout",  NULL,           CFGF_NODEFAULT),
+    CFG_INT_LIST("upstream-write-timeout", NULL,           CFGF_NODEFAULT),
+    CFG_BOOL("passthrough",                cfg_false,      CFGF_NONE),
+    CFG_BOOL("allow-redirect",             cfg_false,      CFGF_NONE),
+    CFG_STR_LIST("redirect-filter",        NULL,           CFGF_NODEFAULT),
+    CFG_SEC("rate-limit",                  ratelimit_opts, CFGF_NODEFAULT),
     CFG_END()
 };
 
 static cfg_opt_t       vhost_opts[] = {
-    CFG_SEC("ssl",                ssl_opts,     CFGF_NODEFAULT),
-    CFG_STR_LIST("aliases",       NULL,         CFGF_NONE),
-    CFG_STR_LIST("strip-headers", "{}",         CFGF_NONE),
-    CFG_SEC("logging",            logging_opts, CFGF_NODEFAULT),
-    CFG_SEC("headers",            headers_opts, CFGF_NODEFAULT),
-    CFG_SEC("rule",               rule_opts,    CFGF_TITLE | CFGF_MULTI | CFGF_NO_TITLE_DUPES),
+    CFG_SEC("ssl",                ssl_opts,       CFGF_NODEFAULT),
+    CFG_STR_LIST("aliases",       NULL,           CFGF_NONE),
+    CFG_STR_LIST("strip-headers", "{}",           CFGF_NONE),
+    CFG_SEC("logging",            logging_opts,   CFGF_NODEFAULT),
+    CFG_SEC("headers",            headers_opts,   CFGF_NODEFAULT),
+    CFG_SEC("rule",               rule_opts,      CFGF_TITLE | CFGF_MULTI | CFGF_NO_TITLE_DUPES),
+    CFG_SEC("rate-limit",         ratelimit_opts, CFGF_NODEFAULT),
     CFG_END()
 };
 
@@ -146,6 +155,7 @@ static cfg_opt_t       server_opts[] = {
     CFG_BOOL("disable-server-nagle",     cfg_false,       CFGF_NONE),
     CFG_BOOL("disable-client-nagle",     cfg_false,       CFGF_NONE),
     CFG_BOOL("disable-downstream-nagle", cfg_false,       CFGF_NONE),
+    CFG_SEC("rate-limit",                ratelimit_opts,  CFGF_NODEFAULT),
     CFG_END()
 };
 
@@ -830,6 +840,7 @@ headers_cfg_parse(cfg_t * cfg) {
 rule_cfg_t *
 rule_cfg_parse(cfg_t * cfg) {
     rule_cfg_t * rcfg;
+    cfg_t      * ratelimit_cfg;
     const char * rname;
     int          i;
 
@@ -873,6 +884,13 @@ rule_cfg_parse(cfg_t * cfg) {
         rcfg->up_write_timeout.tv_sec  = cfg_getnint(cfg, "upstream-write-timeout", 0);
         rcfg->up_write_timeout.tv_usec = cfg_getnint(cfg, "upstream-write-timeout", 1);
         rcfg->has_up_write_timeout     = 1;
+    }
+
+    if ((ratelimit_cfg = cfg_getsec(cfg, "rate-limit"))) {
+        rcfg->ratelim_cfg = malloc(sizeof(ratelimit_cfg_t));
+
+        rcfg->ratelim_cfg->read_rate = cfg_getint(ratelimit_cfg, "read");
+        rcfg->ratelim_cfg->write_rate = cfg_getint(ratelimit_cfg, "read");
     }
 
     for (i = 0; i < cfg_size(cfg, "downstreams"); i++) {
@@ -960,6 +978,7 @@ vhost_cfg_parse(cfg_t * cfg) {
     cfg_t       * err_log_cfg;
     cfg_t       * hdr_cfg;
     cfg_t       * default_rule_cfg;
+    cfg_t       * ratelimit_cfg;
     int           i;
     int           res;
 
@@ -969,6 +988,13 @@ vhost_cfg_parse(cfg_t * cfg) {
     vcfg->server_name = strdup(cfg_title(cfg));
     vcfg->ssl_cfg     = ssl_cfg_parse(cfg_getsec(cfg, "ssl"));
 
+    if ((ratelimit_cfg = cfg_getsec(cfg, "rate-limit"))) {
+        vcfg->ratelim_cfg = malloc(sizeof(ratelimit_cfg_t));
+        vcfg->ratelim_cfg->read_rate = cfg_getint(ratelimit_cfg, "read");
+        vcfg->ratelim_cfg->write_rate = cfg_getint(ratelimit_cfg, "read");
+    }
+
+
     for (i = 0; i < cfg_size(cfg, "rule"); i++) {
         lztq_elem  * elem;
         rule_cfg_t * rule;
@@ -976,6 +1002,8 @@ vhost_cfg_parse(cfg_t * cfg) {
         if (!(rule = rule_cfg_parse(cfg_getnsec(cfg, "rule", i)))) {
             return NULL;
         }
+
+        rule->parent_vhost_cfg = vcfg;
 
         elem = lztq_append(vcfg->rule_cfgs, rule, sizeof(rule), rule_cfg_free);
         assert(elem != NULL);
@@ -1039,6 +1067,7 @@ server_cfg_t *
 server_cfg_parse(cfg_t * cfg) {
     server_cfg_t * scfg;
     cfg_t        * log_cfg;
+    cfg_t        * ratelimit_cfg;
     int            i;
     int            res;
 
@@ -1078,6 +1107,12 @@ server_cfg_parse(cfg_t * cfg) {
         scfg->err_log_cfg = logger_cfg_parse(cfg_getsec(log_cfg, "error"));
     }
 
+    if ((ratelimit_cfg = cfg_getsec(cfg, "rate-limit"))) {
+        scfg->ratelim_cfg = malloc(sizeof(ratelimit_cfg_t));
+        scfg->ratelim_cfg->read_rate = cfg_getint(ratelimit_cfg, "read");
+        scfg->ratelim_cfg->write_rate = cfg_getint(ratelimit_cfg, "read");
+    }
+
     /* parse and insert all the configured downstreams */
     for (i = 0; i < cfg_size(cfg, "downstream"); i++) {
         lztq_elem        * elem;
@@ -1096,6 +1131,8 @@ server_cfg_parse(cfg_t * cfg) {
 
         vcfg = vhost_cfg_parse(cfg_getnsec(cfg, "vhost", i));
         assert(vcfg != NULL);
+
+        vcfg->parent_server_cfg = scfg;
 
         elem = lztq_append(scfg->vhosts, vcfg, sizeof(vcfg), vhost_cfg_free);
         assert(elem != NULL);
