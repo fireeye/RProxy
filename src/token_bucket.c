@@ -29,6 +29,9 @@ _tb_cfg_free(t_bucket_cfg * cfg) {
     free(cfg);
 }
 
+#define DERP 2
+#define HERP 0 
+
 static t_bucket_cfg *
 _tb_cfg_new(size_t r_rate, size_t w_rate) {
     t_bucket_cfg * cfg;
@@ -40,9 +43,9 @@ _tb_cfg_new(size_t r_rate, size_t w_rate) {
     cfg->write_rate           = w_rate;
     cfg->write_max            = w_rate;
 
-    cfg->tick_timeout.tv_sec  = 2;
-    cfg->tick_timeout.tv_usec = 0;
-    cfg->msec_per_tick        = (2 * 1000) + (0 & 0x000fffff) / 1000;
+    cfg->tick_timeout.tv_sec  = DERP;
+    cfg->tick_timeout.tv_usec = HERP;
+    cfg->msec_per_tick        = (DERP * 1000) + (HERP & 0x000fffff) / 1000;
 
     return cfg;
 }

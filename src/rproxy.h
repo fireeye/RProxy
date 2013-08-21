@@ -343,6 +343,7 @@ struct request {
     htparser        * parser;            /**< htparser for responses from the downstream */
     event_t         * pending_ev;        /**< event timer for pending status */
     evbev_t         * downstream_bev;
+    evratelim_bev * rl_bev;
 
     uint8_t error;                       /**< set of downstream returns some type of error */
     uint8_t upstream_err;                /**< set if the upstream encountered a socket error */

@@ -492,7 +492,11 @@ send_upstream_body(evhtp_request_t * upstream_req, evbuf_t * buf, void * arg) {
         return EVHTP_RES_ERROR;
     }
 
+    size_t written = evbuffer_get_length(buf);
+
     bufferevent_write_buffer(ds_conn->connection, buf);
+
+    evratelim_bev_read(request->rl_bev, written);
 
     if (ds_conn->parent->config->high_watermark > 0) {
         if (evbuffer_get_length(bufferevent_get_output(ds_conn->connection)) >= ds_conn->parent->config->high_watermark) {
@@ -545,7 +549,7 @@ send_upstream_new_chunk(evhtp_request_t * upstream_req, uint64_t len, void * arg
         return EVHTP_RES_ERROR;
     }
 
-    evbuffer_add_printf(bufferevent_get_output(ds_conn->connection),
+    size_t written = evbuffer_add_printf(bufferevent_get_output(ds_conn->connection),
                         "%x\r\n", (unsigned int)len);
 
     return EVHTP_RES_OK;
@@ -577,7 +581,7 @@ send_upstream_chunk_done(evhtp_request_t * upstream_req, void * arg) {
         return EVHTP_RES_ERROR;
     }
 
-    bufferevent_write(ds_conn->connection, "\r\n", 2);
+    size_t written = bufferevent_write(ds_conn->connection, "\r\n", 2);
     return EVHTP_RES_OK;
 }
 
@@ -676,6 +680,7 @@ upstream_error(evhtp_request_t * upstream_req, short events, void * arg) {
     assert(rproxy != NULL);
 
     evhtp_unset_all_hooks(&upstream_req->hooks);
+    evratelim_bev_remove(request->rl_bev);
 
     logger_log(rule->err_log, lzlog_warn, "%s(): client aborted, err = %x",
                __FUNCTION__, events);
@@ -1015,6 +1020,25 @@ upstream_dump_request(evhtp_request_t * r, const char * host, void * arg) {
     return EVHTP_RES_ERROR;
 }
 
+static void
+_ratelim_suspendcb(evratelim_bev * rl_bev, short what, void * arg) {
+    struct bufferevent * bev = evratelim_bev_bufferevent(rl_bev);
+
+    printf("suspending\n");
+
+    bufferevent_disable(bev, what);
+}
+
+static void
+_ratelim_resumecb(evratelim_bev * rl_bev, short what, void * arg) {
+    struct bufferevent * bev = evratelim_bev_bufferevent(rl_bev);
+
+    printf("resuming\n");
+
+    bufferevent_enable(bev, what);
+}
+
+
 evhtp_res
 upstream_request_start(evhtp_request_t * up_req, const char * hostname, void * arg) {
     /* This function is called whenever evhtp has matched a hostname on a request.
@@ -1083,6 +1107,15 @@ upstream_request_start(evhtp_request_t * up_req, const char * hostname, void * a
     ds_req->rule = rule;
     ds_req->pending          = 1;
     rproxy->n_pending       += 1;
+
+    if (rule_cfg->ratelim_group) {
+	evratelim_bev * rl_bev = evratelim_add_bufferevent(ds_req->upstream_bev,
+		rule_cfg->ratelim_group);
+
+	evratelim_bev_setcb(rl_bev, _ratelim_suspendcb, _ratelim_resumecb, ds_req);
+
+	ds_req->rl_bev = rl_bev;
+    }
 
     /* if a rule has an upstream-[read|write]-timeout config set, we will set a
      * upstream connection-specific timeout that overrides the global one.
@@ -1624,6 +1657,8 @@ main(int argc, char ** argv) {
         fprintf(stderr, "Usage: %s <config>\n", argv[0]);
         return -1;
     }
+
+    srand(time(NULL));
 
     if (!(rproxy_cfg = rproxy_cfg_parse(argv[1]))) {
         fprintf(stderr, "Error parsing file %s\n", argv[1]);
