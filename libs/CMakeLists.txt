@@ -12,41 +12,8 @@ ExternalProject_Add (
 	INSTALL_COMMAND make install
 )
 
-set (SSL_DSWITCH "")
-
-if (NOT APPLE)
-	if (${CMAKE_BUILD_TYPE} matches "Debug")
-		set (SSL_DSWITCH "-d")
-	endif()
-
-	ExternalProject_Add (
-		openssl
-		URL http://openssl.org/source/openssl-1.0.0i.tar.gz
-		UPDATE_COMMAND ""
-		CONFIGURE_COMMAND ./config --prefix=${RPROXY_DEPS_INSTALL} no-shared no-zlib ${SSL_DSWITCH}
-		BUILD_IN_SOURCE 1
-		BUILD_COMMAND make
-		INSTALL_COMMAND make install_sw
-	)
-else()
-	if (${CMAKE_BUILD_TYPE} MATCHES "Debug")
-		set (SSL_DSWITCH "-g3 -O0")
-	endif()
-
-	ExternalProject_Add(
-		openssl
-		URL http://openssl.org/source/openssl-1.0.0i.tar.gz
-		UPDATE_COMMAND ""
-		CONFIGURE_COMMAND ./Configure darwin64-x86_64-cc --prefix=${RPROXY_DEPS_INSTALL} no-shared no-zlib ${SSL_DSWITCH}
-		BUILD_IN_SOURCE 1
-		BUILD_COMMAND make -j1
-		INSTALL_COMMAND make install_sw
-	)
-endif()
-
 ExternalProject_Add(
 	libevent
-	DEPENDS openssl
 	GIT_REPOSITORY git://github.com/libevent/libevent.git
 	GIT_TAG release-2.0.19-stable
 	UPDATE_COMMAND ""

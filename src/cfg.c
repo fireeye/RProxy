@@ -20,6 +20,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <limits.h>
 
 #include "rproxy.h"
 
@@ -29,6 +30,12 @@
  * determine if the system settings can handle what is configured.
  */
 static rproxy_rusage_t _rusage = { 0, 0, 0 };
+
+static cfg_opt_t       ratelim_opts[] = {
+    CFG_INT("read",  UINT_MAX, CFGF_NONE),
+    CFG_INT("write", UINT_MAX, CFGF_NONE),
+    CFG_END()
+};
 
 static cfg_opt_t       ssl_crl_opts[] = {
     CFG_STR("file",        NULL,         CFGF_NONE),
@@ -116,6 +123,7 @@ static cfg_opt_t       rule_opts[] = {
     CFG_BOOL("passthrough",                cfg_false,    CFGF_NONE),
     CFG_BOOL("allow-redirect",             cfg_false,    CFGF_NONE),
     CFG_STR_LIST("redirect-filter",        NULL,         CFGF_NODEFAULT),
+    CFG_SEC("rate-limit",                  ratelim_opts, CFGF_NODEFAULT),
     CFG_END()
 };
 
@@ -126,6 +134,7 @@ static cfg_opt_t       vhost_opts[] = {
     CFG_SEC("logging",            logging_opts, CFGF_NODEFAULT),
     CFG_SEC("headers",            headers_opts, CFGF_NODEFAULT),
     CFG_SEC("rule",               rule_opts,    CFGF_TITLE | CFGF_MULTI | CFGF_NO_TITLE_DUPES),
+    CFG_SEC("rate-limit",         ratelim_opts, CFGF_NODEFAULT),
     CFG_END()
 };
 
@@ -146,6 +155,7 @@ static cfg_opt_t       server_opts[] = {
     CFG_BOOL("disable-server-nagle",     cfg_false,       CFGF_NONE),
     CFG_BOOL("disable-client-nagle",     cfg_false,       CFGF_NONE),
     CFG_BOOL("disable-downstream-nagle", cfg_false,       CFGF_NONE),
+    CFG_SEC("rate-limit",                ratelim_opts,    CFGF_NODEFAULT),
     CFG_END()
 };
 
@@ -225,6 +235,19 @@ lbstr_to_lbtype(const char * lbstr) {
 logger_cfg_t *
 logger_cfg_new(void) {
     return (logger_cfg_t *)calloc(sizeof(logger_cfg_t), 1);
+}
+
+ratelim_cfg_t *
+ratelim_cfg_new(size_t read_rate, size_t write_rate) {
+    ratelim_cfg_t * rl_cfg;
+
+    rl_cfg = calloc(sizeof(ratelim_cfg_t), 1);
+    assert(rl_cfg != NULL);
+
+    rl_cfg->read_rate  = read_rate;
+    rl_cfg->write_rate = write_rate;
+
+    return rl_cfg;
 }
 
 void
@@ -491,6 +514,22 @@ x509_ext_cfg_free(void * arg) {
     }
 
     free(c);
+}
+
+ratelim_cfg_t *
+ratelim_cfg_parse(cfg_t * cfg) {
+    ratelim_cfg_t * rl_cfg;
+
+    if (cfg == NULL) {
+        return NULL;
+    }
+
+    rl_cfg = ratelim_cfg_new(cfg_getint(cfg, "read"),
+                             cfg_getint(cfg, "write"));
+
+    assert(rl_cfg != NULL);
+
+    return rl_cfg;
 }
 
 logger_cfg_t *
@@ -875,6 +914,8 @@ rule_cfg_parse(cfg_t * cfg) {
         rcfg->has_up_write_timeout     = 1;
     }
 
+    rcfg->ratelim_cfg = ratelim_cfg_parse(cfg_getsec(cfg, "rate-limit"));
+
     for (i = 0; i < cfg_size(cfg, "downstreams"); i++) {
         lztq_elem * elem;
         char      * ds_name;
@@ -968,6 +1009,7 @@ vhost_cfg_parse(cfg_t * cfg) {
 
     vcfg->server_name = strdup(cfg_title(cfg));
     vcfg->ssl_cfg     = ssl_cfg_parse(cfg_getsec(cfg, "ssl"));
+    vcfg->ratelim_cfg = ratelim_cfg_parse(cfg_getsec(cfg, "rate-limit"));
 
     for (i = 0; i < cfg_size(cfg, "rule"); i++) {
         lztq_elem  * elem;
@@ -1060,6 +1102,7 @@ server_cfg_parse(cfg_t * cfg) {
     scfg->pending_timeout.tv_sec  = cfg_getnint(cfg, "pending-timeout", 0);
     scfg->pending_timeout.tv_usec = cfg_getnint(cfg, "pending-timeout", 1);
     scfg->high_watermark          = cfg_getint(cfg, "high-watermark");
+    scfg->ratelim_cfg             = ratelim_cfg_parse(cfg_getsec(cfg, "rate-limit"));
 
     if (cfg_getbool(cfg, "disable-server-nagle") == cfg_true) {
         scfg->disable_server_nagle = 1;
