@@ -5,6 +5,7 @@
 #include <errno.h>
 #include <pthread.h>
 #include <limits.h>
+#include <assert.h>
 #include <stdbool.h>
 #include <sys/queue.h>
 
@@ -14,6 +15,10 @@
 
 #include "token_bucket.h"
 #include "ratelim.h"
+
+#ifndef TAILQ_END
+#define TAILQ_END(head) NULL
+#endif
 
 struct ratelim_bev_s {
     pthread_mutex_t lock;
@@ -134,6 +139,7 @@ _ratelim_group_get_random_bev(ratelim_group * group) {
         int where;
 
         if (group->n_members == 0) {
+            pthread_mutex_unlock(&group->lock);
             return NULL;
         }
 
@@ -227,7 +233,7 @@ _ratelim_group_suspend(ratelim_group * group, short what) {
 
     pthread_mutex_lock(&group->lock);
     {
-        first = TAILQ_FIRST(&group->member);
+        first = TAILQ_FIRST(&group->members);
 
         for (bev = first; bev != TAILQ_END(&group->members); bev = TAILQ_NEXT(bev, next)) {
             pthread_mutex_lock(&bev->lock);
@@ -317,7 +323,7 @@ _ratelim_group_new(struct event_base * base, t_bucket * bucket, size_t r_rate, s
 
     if (bucket == NULL) {
         group->t_cfg    = t_bucket_cfg_new(r_rate, w_rate);
-        group->t_bucket = t_bucket_new(group->cfg);
+        group->t_bucket = t_bucket_new(group->t_cfg);
     } else {
         group->t_bucket = bucket;
         group->t_cfg    = t_bucket_get_cfg(bucket);
@@ -356,8 +362,11 @@ _ratelim_bev_new(void) {
     rl_bev = calloc(sizeof(ratelim_bev), 1);
     assert(rl_bev != NULL);
 
+#if 0
+    /* XXX should we default to bufferevent_(enable|disable)? */
     rl_bev->suspend_cb = _default_suspend_cb;
     rl_bev->resume_cb  = _default_resume_cb;
+#endif
 
     pthread_mutexattr_init(&attr);
     pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
@@ -466,7 +475,7 @@ ratelim_remove_bev(ratelim_bev * bev) {
 
         bev->group        = NULL;
 
-        TAILQ_REMOVE(&group->members, rl_bev, next);
+        TAILQ_REMOVE(&group->members, bev, next);
     }
     pthread_mutex_unlock(&group->lock);
     pthread_mutex_unlock(&bev->lock);
@@ -507,7 +516,7 @@ ratelim_write_bev(ratelim_bev * bev, ssize_t nbytes) {
 
         if (t_bucket_get_write_limit(bev->group->t_bucket) <= 0) {
             _ratelim_group_suspend_writing(bev->group);
-        } else if (rl_bev->group->wr_suspended == true) {
+        } else if (bev->group->wr_suspended == true) {
             _ratelim_group_resume_writing(bev->group);
         }
     }
@@ -524,7 +533,7 @@ ratelim_read_bev(ratelim_bev * bev, ssize_t nbytes) {
     {
         t_bucket_update_read(bev->group->t_bucket, nbytes);
 
-        if (t_bucket_read_limit(bev->group->t_bucket) <= 0) {
+        if (t_bucket_get_read_limit(bev->group->t_bucket) <= 0) {
             _ratelim_group_suspend_reading(bev->group);
         } else if (bev->group->rd_suspended == true) {
             _ratelim_group_resume_reading(bev->group);

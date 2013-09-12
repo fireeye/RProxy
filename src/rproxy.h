@@ -30,6 +30,8 @@
 
 #include "lzq.h"
 #include "lzlog.h"
+#include "token_bucket.h"
+#include "ratelim.h"
 
 #define RPROXY_VERSION "2.0.17"
 
@@ -111,6 +113,7 @@ struct rule_cfg {
     struct timeval  up_read_timeout;
     struct timeval  up_write_timeout;
     ratelim_cfg_t * ratelim_cfg;
+    t_bucket      * t_bucket;
 };
 
 /**
@@ -173,6 +176,7 @@ struct vhost_cfg {
     logger_cfg_t    * err_log;          /* error logging configuration */
     headers_cfg_t   * headers;          /**< headers which are added to the backend request */
     ratelim_cfg_t   * ratelim_cfg;
+    t_bucket        * t_bucket;
 };
 
 /**
@@ -202,6 +206,7 @@ struct server_cfg {
     int disable_downstream_nagle;       /**< disable nagle for downstream sockets */
 
     ratelim_cfg_t * ratelim_cfg;
+    t_bucket      * t_bucket;
 };
 
 

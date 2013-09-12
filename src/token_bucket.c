@@ -36,7 +36,6 @@ _t_bucket_get_tick(t_bucket_cfg * cfg, struct timeval * tv) {
     return (unsigned)(msec / cfg->msec_per_tick);
 }
 
-
 /**
  * @brief initializes the bucket using data from the config.
  *
@@ -65,6 +64,10 @@ _t_bucket_init(t_bucket * bucket, t_bucket_cfg * cfg) {
 
 void
 t_bucket_update(t_bucket * bucket) {
+    /* XXX: it should be noted that multiple threads calling this function
+     * around the same time may throw off the n_ticks calculation. At some point
+     * in time we should figure out a way to fix this.
+     */
     struct timeval now;
 
     assert(bucket != NULL);
@@ -103,7 +106,7 @@ t_bucket_update(t_bucket * bucket) {
         bucket->last_updated = current_tick;
     }
     pthread_mutex_unlock(&bucket->lock);
-}
+} /* t_bucket_update */
 
 void
 t_bucket_update_read(t_bucket * bucket, ssize_t n) {
@@ -155,6 +158,76 @@ t_bucket_get_write_limit(t_bucket * bucket) {
     pthread_mutex_unlock(&bucket->lock);
 
     return res;
+}
+
+struct timeval *
+t_bucket_cfg_get_tick_timeout(t_bucket_cfg * cfg) {
+    assert(cfg != NULL);
+
+    return &cfg->tick_timeout;
+}
+
+struct timeval *
+t_bucket_get_tick_timeout(t_bucket * bucket) {
+    assert(bucket != NULL);
+
+    return t_bucket_cfg_get_tick_timeout(bucket->cfg);
+}
+
+size_t
+t_bucket_cfg_get_read_rate(t_bucket_cfg * cfg) {
+    assert(cfg != NULL);
+
+    return cfg->read_rate;
+}
+
+size_t
+t_bucket_get_read_rate(t_bucket * bucket) {
+    assert(bucket != NULL);
+
+    return t_bucket_cfg_get_read_rate(bucket->cfg);
+}
+
+size_t
+t_bucket_cfg_get_write_rate(t_bucket_cfg * cfg) {
+    assert(cfg != NULL);
+
+    return cfg->write_rate;
+}
+
+size_t
+t_bucket_get_write_rate(t_bucket * bucket) {
+    assert(bucket != NULL);
+
+    return t_bucket_cfg_get_write_rate(bucket->cfg);
+}
+
+t_bucket_cfg *
+t_bucket_get_cfg(t_bucket * bucket) {
+    assert(bucket != NULL);
+
+    return bucket->cfg;
+}
+
+int
+t_bucket_try_lock(t_bucket * bucket) {
+    assert(bucket != NULL);
+
+    return pthread_mutex_trylock(&bucket->lock);
+}
+
+int
+t_bucket_lock(t_bucket * bucket) {
+    assert(bucket != NULL);
+
+    return pthread_mutex_lock(&bucket->lock);
+}
+
+int
+t_bucket_unlock(t_bucket * bucket) {
+    assert(bucket != NULL);
+
+    return pthread_mutex_unlock(&bucket->lock);
 }
 
 t_bucket *

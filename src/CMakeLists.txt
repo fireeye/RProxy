@@ -10,7 +10,8 @@ add_executable(rproxy
 	lzq.c
 	logger.c
 	util.c
-	token_bucket.c)
+	token_bucket.c
+	ratelim.c)
 
 target_link_libraries(rproxy ${RPROXY_EXTERNAL_LIBS} ${SYS_LIBS})
 

@@ -77,7 +77,23 @@ ssize_t t_bucket_get_read_limit(t_bucket * bucket);
  *
  * @return
  */
-ssize_t t_bucket_get_write_limit(t_bucket * bucket);
+ssize_t          t_bucket_get_write_limit(t_bucket * bucket);
+ssize_t          t_bucket_get_read_limit(t_bucket * bucket);
+
+size_t           t_bucket_get_read_rate(t_bucket * bucket);
+size_t           t_bucket_cfg_get_read_rate(t_bucket_cfg * cfg);
+
+size_t           t_bucket_get_write_rate(t_bucket * bucket);
+size_t           t_bucket_cfg_get_write_rate(t_bucket_cfg * bucket);
+
+t_bucket_cfg   * t_bucket_get_cfg(t_bucket * bucket);
+
+struct timeval * t_bucket_cfg_get_tick_timeout(t_bucket_cfg * cfg);
+struct timeval * t_bucket_get_tick_timeout(t_bucket * bucket);
+
+int t_bucket_try_lock(t_bucket * bucket);
+int t_bucket_lock(t_bucket * bucket);
+int t_bucket_unlock(t_bucket * bucket);
 
 #endif
 
