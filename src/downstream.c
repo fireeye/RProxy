@@ -651,11 +651,11 @@ proxy_parser_body(htparser * p, const char * data, size_t len) {
     }
 
     if (request->upstream_rlbev) {
-        ratelim_write_bev(request->upstream_rlbev, len);
+        ratelim_write_bev(request->upstream_rlbev, request->rule->rl_group, len);
     }
 
     if (request->downstream_rlbev) {
-        ratelim_read_bev(request->downstream_rlbev, len);
+        ratelim_read_bev(request->downstream_rlbev, request->rule->rl_group, len);
     }
 
     return 0;

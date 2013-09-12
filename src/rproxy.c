@@ -511,11 +511,11 @@ send_upstream_body(evhtp_request_t * upstream_req, evbuf_t * buf, void * arg) {
     }
 
     if (request->upstream_rlbev) {
-        ratelim_read_bev(request->upstream_rlbev, bytes_written);
+        ratelim_read_bev(request->upstream_rlbev, rule->rl_group, bytes_written);
     }
 
     if (request->downstream_rlbev) {
-        ratelim_write_bev(request->downstream_rlbev, bytes_written);
+        ratelim_write_bev(request->downstream_rlbev, rule->rl_group, bytes_written);
     }
 
     return EVHTP_RES_OK;
@@ -1613,10 +1613,10 @@ rproxy_process_pending(int fd, short which, void * arg) {
             assert(request->upstream_rlbev != NULL);
 
 
-            ratelim_bev_setcb(request->upstream_rlbev, _rl_suspendcb,
-                              _rl_resumecb, request);
-            ratelim_bev_setcb(request->downstream_rlbev, _rl_suspendcb,
-                              _rl_resumecb, request);
+            ratelim_bev_setcb(request->upstream_rlbev, request->rule->rl_group,
+		    _rl_suspendcb, _rl_resumecb, request);
+            ratelim_bev_setcb(request->downstream_rlbev, request->rule->rl_group,
+		    _rl_suspendcb, _rl_resumecb, request);
         }
 
         if (request->pending_ev != NULL) {
