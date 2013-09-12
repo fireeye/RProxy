@@ -236,8 +236,10 @@ t_bucket_new(t_bucket_cfg * cfg) {
 
     assert(cfg != NULL);
 
-    bucket = calloc(sizeof(t_bucket), 1);
+    bucket      = calloc(sizeof(t_bucket), 1);
     assert(bucket != NULL);
+
+    bucket->cfg = cfg;
 
     _t_bucket_init(bucket, bucket->cfg);
 

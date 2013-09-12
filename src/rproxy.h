@@ -112,6 +112,7 @@ struct rule_cfg {
     int             has_up_write_timeout;
     struct timeval  up_read_timeout;
     struct timeval  up_write_timeout;
+    vhost_cfg_t   * parent_vhost_cfg;
     ratelim_cfg_t * ratelim_cfg;
     t_bucket      * t_bucket;
 };
@@ -175,6 +176,7 @@ struct vhost_cfg {
     logger_cfg_t    * req_log;          /* request logging configuration */
     logger_cfg_t    * err_log;          /* error logging configuration */
     headers_cfg_t   * headers;          /**< headers which are added to the backend request */
+    server_cfg_t    * parent_server_cfg;
     ratelim_cfg_t   * ratelim_cfg;
     t_bucket        * t_bucket;
 };
@@ -323,10 +325,11 @@ struct ssl_crl_ent {
 };
 
 struct vhost {
-    vhost_cfg_t * config;
-    rproxy_t    * rproxy;
-    logger_t    * req_log;
-    logger_t    * err_log;
+    vhost_cfg_t   * config;
+    rproxy_t      * rproxy;
+    logger_t      * req_log;
+    logger_t      * err_log;
+    ratelim_group * rl_group;
 };
 
 /**
@@ -351,6 +354,9 @@ struct request {
     uint8_t hit_upstream_highwm;
     uint8_t reading;
 
+    ratelim_bev * upstream_rlbev;
+    ratelim_bev * downstream_rlbev;
+
     TAILQ_ENTRY(request) next;
 };
 
@@ -358,15 +364,15 @@ struct request {
  * @brief a structure representing a downstream connection.
  */
 struct downstream_c {
-    downstream_t    * parent;          /**< the parent downstream structure */
-    evbev_t         * connection;      /**< the bufferevent connection */
-    request_t       * request;         /**< the currently running request */
-    event_t         * retry_timer;     /**< the timer event for reconnecting if down */
-    downstream_status status;          /**< the status of this downstream */
-    double            rtt;             /**< the last RTT for a request made to the connection */
-    uint16_t          sport;           /**< the source port of the connected socket */
-    uint8_t           bootstrapped;    /**< if not set to 1, the connection will immediately attempt the reconnect */
-    struct timeval    tv_start;        /**< the time which the connection was set to active, used to calculate RTT */
+    downstream_t    * parent;             /**< the parent downstream structure */
+    evbev_t         * connection;         /**< the bufferevent connection */
+    request_t       * request;            /**< the currently running request */
+    event_t         * retry_timer;        /**< the timer event for reconnecting if down */
+    downstream_status status;             /**< the status of this downstream */
+    double            rtt;                /**< the last RTT for a request made to the connection */
+    uint16_t          sport;              /**< the source port of the connected socket */
+    uint8_t           bootstrapped;       /**< if not set to 1, the connection will immediately attempt the reconnect */
+    struct timeval    tv_start;           /**< the time which the connection was set to active, used to calculate RTT */
 
     TAILQ_ENTRY(downstream_c) next;
 };
@@ -375,26 +381,27 @@ struct downstream_c {
  * @brief a container active/idle/downed downstream connections
  */
 struct downstream {
-    downstream_cfg_t * config;         /**< this downstreams configuration */
+    downstream_cfg_t * config;            /**< this downstreams configuration */
     evbase_t         * evbase;
     rproxy_t         * rproxy;
-    uint16_t           num_active;     /**< number of ents in the active list */
-    uint16_t           num_idle;       /**< number of ents in the idle list */
-    uint16_t           num_down;       /**< number of ents in the down list */
+    uint16_t           num_active;        /**< number of ents in the active list */
+    uint16_t           num_idle;          /**< number of ents in the idle list */
+    uint16_t           num_down;          /**< number of ents in the down list */
 
-    TAILQ_HEAD(, downstream_c) active; /**< list of active connections */
-    TAILQ_HEAD(, downstream_c) idle;   /**< list of idle and ready connections */
-    TAILQ_HEAD(, downstream_c) down;   /**< list of connections which are down */
+    TAILQ_HEAD(, downstream_c) active;    /**< list of active connections */
+    TAILQ_HEAD(, downstream_c) idle;      /**< list of idle and ready connections */
+    TAILQ_HEAD(, downstream_c) down;      /**< list of connections which are down */
 };
 
 struct rule {
-    rproxy_t   * rproxy;
-    rule_cfg_t * config;
-    vhost_t    * parent_vhost;         /**< the vhost this rule is under */
-    lztq       * downstreams;          /**< list of downstream_t's configured for this rule */
-    lztq_elem  * last_downstream_used; /**< the last downstream used to service a request. Used for round-robin loadbalancing */
-    logger_t   * req_log;              /**< rule specific request log */
-    logger_t   * err_log;              /**< rule specific error log */
+    rproxy_t      * rproxy;
+    rule_cfg_t    * config;
+    vhost_t       * parent_vhost;         /**< the vhost this rule is under */
+    lztq          * downstreams;          /**< list of downstream_t's configured for this rule */
+    lztq_elem     * last_downstream_used; /**< the last downstream used to service a request. Used for round-robin loadbalancing */
+    logger_t      * req_log;              /**< rule specific request log */
+    logger_t      * err_log;              /**< rule specific error log */
+    ratelim_group * rl_group;
 };
 
 TAILQ_HEAD(pending_request_q, request);
@@ -414,6 +421,7 @@ struct rproxy {
     pending_request_q_t pending;                  /**< list of pending upstream request_t's */
     logger_t          * req_log;
     logger_t          * err_log;
+    ratelim_group     * rl_group;
 };
 
 /************************************************

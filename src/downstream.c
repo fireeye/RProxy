@@ -650,6 +650,14 @@ proxy_parser_body(htparser * p, const char * data, size_t len) {
         return -1;
     }
 
+    if (request->upstream_rlbev) {
+        ratelim_write_bev(request->upstream_rlbev, len);
+    }
+
+    if (request->downstream_rlbev) {
+        ratelim_read_bev(request->downstream_rlbev, len);
+    }
+
     return 0;
 } /* proxy_parser_body */
 
@@ -823,6 +831,7 @@ downstream_connection_set_idle(downstream_c_t * connection) {
     downstream->num_idle += 1;
     connection->status    = downstream_status_idle;
 
+    bufferevent_enable(connection->connection, EV_READ | EV_WRITE);
     evtimer_del(connection->retry_timer);
 
     /* signal the pending request handler that this connection is idle */
@@ -959,6 +968,7 @@ downstream_connection_set_active(downstream_c_t * connection) {
      */
     evutil_gettimeofday(&connection->tv_start, NULL);
 
+    bufferevent_enable(connection->connection, EV_READ | EV_WRITE);
     event_del(connection->retry_timer);
 
     return 0;

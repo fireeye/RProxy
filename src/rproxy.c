@@ -461,6 +461,7 @@ send_upstream_body(evhtp_request_t * upstream_req, evbuf_t * buf, void * arg) {
     rule_t         * rule;
     rproxy_t       * rproxy;
     downstream_c_t * ds_conn;
+    size_t           bytes_written;
 
     request = arg;
     assert(request != NULL);
@@ -492,6 +493,8 @@ send_upstream_body(evhtp_request_t * upstream_req, evbuf_t * buf, void * arg) {
         return EVHTP_RES_ERROR;
     }
 
+    bytes_written = evbuffer_get_length(buf);
+
     bufferevent_write_buffer(ds_conn->connection, buf);
 
     if (ds_conn->parent->config->high_watermark > 0) {
@@ -505,6 +508,14 @@ send_upstream_body(evhtp_request_t * upstream_req, evbuf_t * buf, void * arg) {
             evhtp_request_pause(upstream_req);
             return EVHTP_RES_PAUSE;
         }
+    }
+
+    if (request->upstream_rlbev) {
+        ratelim_read_bev(request->upstream_rlbev, bytes_written);
+    }
+
+    if (request->downstream_rlbev) {
+        ratelim_write_bev(request->downstream_rlbev, bytes_written);
     }
 
     return EVHTP_RES_OK;
@@ -809,6 +820,14 @@ map_vhost_rules_to_downstreams(lztq_elem * elem, void * arg) {
     rule->rproxy       = rproxy;
     rule->config       = rule_cfg;
     rule->parent_vhost = vhost;
+
+    if (rule_cfg->ratelim_cfg != NULL) {
+        rule->rl_group = ratelim_group_with_t_bucket(rproxy->evbase,
+                                                     rule_cfg->t_bucket);
+        assert(rule->rl_group != NULL);
+    } else {
+        rule->rl_group = vhost->rl_group;
+    }
 
     /*
      * if a rule specific logging is found then all is good to go. otherwise
@@ -1197,6 +1216,12 @@ rproxy_thread_init(evhtp_t * htp, evthr_t * thr, void * arg) {
     rproxy->evbase     = evbase;
     rproxy->htp        = htp;
 
+    if (server_cfg->t_bucket != NULL) {
+        rproxy->rl_group = ratelim_group_with_t_bucket(evbase,
+                                                       server_cfg->t_bucket);
+        assert(rproxy->rl_group != NULL);
+    }
+
     /* create a downstream_t instance for each configured downstream */
     res = lztq_for_each(server_cfg->downstreams, add_downstream, rproxy);
     assert(res == 0);
@@ -1246,6 +1271,14 @@ rproxy_thread_init(evhtp_t * htp, evthr_t * thr, void * arg) {
             vhost->config  = vhost_cfg;
             vhost->rproxy  = rproxy;
 
+            if (vhost_cfg->ratelim_cfg != NULL) {
+                vhost->rl_group = ratelim_group_with_t_bucket(evbase,
+                                                              vhost_cfg->t_bucket);
+                assert(vhost->rl_group != NULL);
+            } else {
+                vhost->rl_group = rproxy->rl_group;
+            }
+
             res = lztq_for_each(vhost_cfg->rule_cfgs, map_vhost_rules_to_downstreams, vhost);
             assert(res == 0);
 
@@ -1293,6 +1326,19 @@ add_callback_rule(lztq_elem * elem, void * arg) {
         exit(EXIT_FAILURE);
     }
 
+    if (rule->ratelim_cfg != NULL) {
+        size_t rd_rate;
+        size_t wr_rate;
+
+        rd_rate        = rule->ratelim_cfg->read_rate;
+        wr_rate        = rule->ratelim_cfg->write_rate;
+
+        rule->t_bucket = t_bucket_new(t_bucket_cfg_new(rd_rate, wr_rate));
+        assert(rule->t_bucket != NULL);
+    } else {
+        rule->t_bucket = rule->parent_vhost_cfg->t_bucket;
+    }
+
     /* if one of the callbacks matches, upstream_request_start will be called
      * with the argument of this rule_cfg_t
      */
@@ -1300,7 +1346,7 @@ add_callback_rule(lztq_elem * elem, void * arg) {
                    upstream_request_start, rule);
 
     return 0;
-}
+} /* add_callback_rule */
 
 static int
 add_vhost_name(lztq_elem * elem, void * arg) {
@@ -1325,6 +1371,19 @@ add_vhost(lztq_elem * elem, void * arg) {
     /* disable 100-continue responses, we let the downstreams deal with this.
      */
     evhtp_disable_100_continue(htp_vhost);
+
+    if (vcfg->ratelim_cfg) {
+        size_t rd_rate;
+        size_t wr_rate;
+
+        rd_rate        = vcfg->ratelim_cfg->read_rate;
+        wr_rate        = vcfg->ratelim_cfg->write_rate;
+
+        vcfg->t_bucket = t_bucket_new(t_bucket_cfg_new(rd_rate, wr_rate));
+        assert(vcfg->t_bucket != NULL);
+    } else {
+        vcfg->t_bucket = vcfg->parent_server_cfg->t_bucket;
+    }
 
     /* for each rule, create a evhtp callback with the defined type */
     lztq_for_each(vcfg->rule_cfgs, add_callback_rule, htp_vhost);
@@ -1433,6 +1492,17 @@ rproxy_init(evbase_t * evbase, rproxy_cfg_t * cfg) {
             }
         }
 
+        if (server->ratelim_cfg != NULL) {
+            size_t rd_rate;
+            size_t wr_rate;
+
+            rd_rate          = server->ratelim_cfg->read_rate;
+            wr_rate          = server->ratelim_cfg->write_rate;
+
+            server->t_bucket = t_bucket_new(t_bucket_cfg_new(rd_rate, wr_rate));
+            assert(server->t_bucket != NULL);
+        }
+
         /* for each vhost, create a child virtual host and stick it in our main
          * evhtp structure.
          */
@@ -1488,6 +1558,21 @@ rproxy_init(evbase_t * evbase, rproxy_cfg_t * cfg) {
 }     /* rproxy_init */
 
 static void
+_rl_suspendcb(ratelim_bev * rl_bev, short what, void * arg) {
+    printf("Suspending\n");
+
+    bufferevent_disable(ratelim_bev_get_bufferevent(rl_bev), what);
+}
+
+static void
+_rl_resumecb(ratelim_bev * rl_bev, short what, void * arg) {
+    printf("Resuming\n");
+
+    bufferevent_enable(ratelim_bev_get_bufferevent(rl_bev), what);
+    return;
+}
+
+static void
 rproxy_process_pending(int fd, short which, void * arg) {
     rproxy_t  * rproxy;
     request_t * request;
@@ -1521,6 +1606,22 @@ rproxy_process_pending(int fd, short which, void * arg) {
         request->downstream_conn->request = request;
         request->pending   = 0;
         rproxy->n_pending -= 1;
+
+        if (request->rule->rl_group != NULL) {
+            request->downstream_rlbev =
+                ratelim_add_bufferevent(request->downstream_bev, request->rule->rl_group);
+            assert(request->downstream_rlbev != NULL);
+
+            request->upstream_rlbev   =
+                ratelim_add_bufferevent(request->upstream_bev, request->rule->rl_group);
+            assert(request->upstream_rlbev != NULL);
+
+
+            ratelim_bev_setcb(request->upstream_rlbev, _rl_suspendcb,
+                              _rl_resumecb, request);
+            ratelim_bev_setcb(request->downstream_rlbev, _rl_suspendcb,
+                              _rl_resumecb, request);
+        }
 
         if (request->pending_ev != NULL) {
             /* delete the pending timer so that it does not trigger */

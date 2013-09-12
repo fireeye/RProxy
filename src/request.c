@@ -36,6 +36,14 @@ request_free(request_t * request) {
         event_free(request->pending_ev);
     }
 
+    if (request->upstream_rlbev != NULL) {
+        ratelim_free_bev(request->upstream_rlbev);
+    }
+
+    if (request->downstream_rlbev != NULL) {
+        ratelim_free_bev(request->downstream_rlbev);
+    }
+
     free(request);
 }
 

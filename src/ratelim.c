@@ -53,8 +53,10 @@ _ratelim_resume_bev(ratelim_bev * bev, short what) {
     pthread_mutex_lock(&bev->lock);
     pthread_mutex_lock(&bev->group->lock);
     {
-        if (bev->resume_cb != NULL) {
-            (bev->resume_cb)(bev, what, bev->cbarg);
+        if (!(bufferevent_get_enabled(bev->bev) & what)) {
+            if (bev->resume_cb != NULL) {
+                (bev->resume_cb)(bev, what, bev->cbarg);
+            }
         }
     }
     pthread_mutex_unlock(&bev->group->lock);
@@ -94,8 +96,10 @@ _ratelim_suspend_bev(ratelim_bev * bev, short what) {
     pthread_mutex_lock(&bev->lock);
     pthread_mutex_lock(&bev->group->lock);
     {
-        if (bev->suspend_cb != NULL) {
-            (bev->suspend_cb)(bev, what, bev->cbarg);
+        if ((bufferevent_get_enabled(bev->bev) & what)) {
+            if (bev->suspend_cb != NULL) {
+                (bev->suspend_cb)(bev, what, bev->cbarg);
+            }
         }
     }
     pthread_mutex_unlock(&bev->group->lock);
@@ -252,6 +256,8 @@ _ratelim_group_suspend_writing(ratelim_group * group) {
 
     pthread_mutex_lock(&group->lock);
     {
+        group->wr_suspended = true;
+
         _ratelim_group_suspend(group, EV_WRITE);
     }
     pthread_mutex_unlock(&group->lock);
@@ -263,6 +269,8 @@ _ratelim_group_suspend_reading(ratelim_group * group) {
 
     pthread_mutex_lock(&group->lock);
     {
+        group->rd_suspended = true;
+
         _ratelim_group_suspend(group, EV_READ);
     }
     pthread_mutex_unlock(&group->lock);
@@ -451,7 +459,8 @@ ratelim_add_bufferevent(struct bufferevent * bev, ratelim_group * group) {
 
         pthread_mutex_lock(&rl_bev->lock);
         {
-            rl_bev->bev = bev;
+            rl_bev->bev   = bev;
+            rl_bev->group = group;
             ratelim_add_bev(rl_bev, group);
         }
         pthread_mutex_unlock(&rl_bev->lock);
@@ -503,6 +512,15 @@ ratelim_free_bev(ratelim_bev * bev) {
 ratelim_group *
 ratelim_group_new(struct event_base * base, size_t r_rate, size_t w_rate) {
     return _ratelim_group_new(base, NULL, r_rate, w_rate);
+}
+
+struct bufferevent *
+ratelim_bev_get_bufferevent(ratelim_bev * bev) {
+    assert(bev != NULL);
+
+    /* XXX: lock */
+
+    return bev->bev;
 }
 
 void

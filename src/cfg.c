@@ -1019,6 +1019,8 @@ vhost_cfg_parse(cfg_t * cfg) {
             return NULL;
         }
 
+        rule->parent_vhost_cfg = vcfg;
+
         elem = lztq_append(vcfg->rule_cfgs, rule, sizeof(rule), rule_cfg_free);
         assert(elem != NULL);
     }
@@ -1139,6 +1141,8 @@ server_cfg_parse(cfg_t * cfg) {
 
         vcfg = vhost_cfg_parse(cfg_getnsec(cfg, "vhost", i));
         assert(vcfg != NULL);
+
+        vcfg->parent_server_cfg = scfg;
 
         elem = lztq_append(scfg->vhosts, vcfg, sizeof(vcfg), vhost_cfg_free);
         assert(elem != NULL);
