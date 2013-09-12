@@ -1,4 +1,4 @@
-/* Copyright [2012] [Mandiant, inc]
+/* Copyright [2013] [Mandiant, inc]
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@
  * limitations under the License.
  */
 
-Portions of Libevhtp are based on works by others, also made available by them
+Portions of RProxy are based on works by others, also made available by them
 under the three-clause BSD license above.
 
 token_bucket.c, ratelim.c are derived and inspired by Nick Mathewson's Libevent:
