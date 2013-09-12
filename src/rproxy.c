@@ -1559,15 +1559,11 @@ rproxy_init(evbase_t * evbase, rproxy_cfg_t * cfg) {
 
 static void
 _rl_suspendcb(ratelim_bev * rl_bev, short what, void * arg) {
-    printf("Suspending\n");
-
     bufferevent_disable(ratelim_bev_get_bufferevent(rl_bev), what);
 }
 
 static void
 _rl_resumecb(ratelim_bev * rl_bev, short what, void * arg) {
-    printf("Resuming\n");
-
     bufferevent_enable(ratelim_bev_get_bufferevent(rl_bev), what);
     return;
 }
