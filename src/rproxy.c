@@ -1614,9 +1614,9 @@ rproxy_process_pending(int fd, short which, void * arg) {
 
 
             ratelim_bev_setcb(request->upstream_rlbev, request->rule->rl_group,
-		    _rl_suspendcb, _rl_resumecb, request);
+                              _rl_suspendcb, _rl_resumecb, request);
             ratelim_bev_setcb(request->downstream_rlbev, request->rule->rl_group,
-		    _rl_suspendcb, _rl_resumecb, request);
+                              _rl_suspendcb, _rl_resumecb, request);
         }
 
         if (request->pending_ev != NULL) {
