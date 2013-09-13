@@ -1698,6 +1698,7 @@ main(int argc, char ** argv) {
         return -1;
     }
 
+    srand(time(NULL));
 #ifdef USE_MALLOPT
     if (rproxy_cfg->mem_trimsz) {
         mallopt(M_TRIM_THRESHOLD, rproxy_cfg->mem_trimsz);
