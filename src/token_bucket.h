@@ -91,9 +91,9 @@ t_bucket_cfg   * t_bucket_get_cfg(t_bucket * bucket);
 struct timeval * t_bucket_cfg_get_tick_timeout(t_bucket_cfg * cfg);
 struct timeval * t_bucket_get_tick_timeout(t_bucket * bucket);
 
-int t_bucket_try_lock(t_bucket * bucket);
-int t_bucket_lock(t_bucket * bucket);
-int t_bucket_unlock(t_bucket * bucket);
+int              t_bucket_try_lock(t_bucket * bucket);
+int              t_bucket_lock(t_bucket * bucket);
+int              t_bucket_unlock(t_bucket * bucket);
 
 #endif
 

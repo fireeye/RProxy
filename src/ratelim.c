@@ -51,7 +51,6 @@ _ratelim_resume_bev(ratelim_bev * bev, ratelim_group * group, short what) {
     assert(bev != NULL);
 
     pthread_mutex_lock(&group->lock);
-    /* pthread_mutex_lock(&bev->lock); */
     {
         if (!(bufferevent_get_enabled(bev->bev) & what)) {
             if (bev->resume_cb != NULL) {
@@ -59,7 +58,6 @@ _ratelim_resume_bev(ratelim_bev * bev, ratelim_group * group, short what) {
             }
         }
     }
-    /* pthread_mutex_unlock(&bev->lock); */
     pthread_mutex_unlock(&group->lock);
 }
 
@@ -68,11 +66,9 @@ _ratelim_resume_bev_read(ratelim_bev * bev, ratelim_group * group) {
     assert(bev != NULL);
 
     pthread_mutex_lock(&group->lock);
-    /* pthread_mutex_lock(&bev->lock); */
     {
         _ratelim_resume_bev(bev, group, EV_READ);
     }
-    /* pthread_mutex_unlock(&bev->lock); */
     pthread_mutex_unlock(&group->lock);
 }
 
@@ -81,11 +77,9 @@ _ratelim_resume_bev_write(ratelim_bev * bev, ratelim_group * group) {
     assert(bev != NULL);
 
     pthread_mutex_lock(&group->lock);
-    /* pthread_mutex_lock(&bev->lock); */
     {
         _ratelim_resume_bev(bev, group, EV_WRITE);
     }
-    /* pthread_mutex_unlock(&bev->lock); */
     pthread_mutex_unlock(&group->lock);
 }
 
@@ -94,7 +88,6 @@ _ratelim_suspend_bev(ratelim_bev * bev, ratelim_group * group, short what) {
     assert(bev != NULL);
 
     pthread_mutex_lock(&group->lock);
-    /* pthread_mutex_lock(&bev->lock); */
     {
         if ((bufferevent_get_enabled(bev->bev) & what)) {
             if (bev->suspend_cb != NULL) {
@@ -102,7 +95,6 @@ _ratelim_suspend_bev(ratelim_bev * bev, ratelim_group * group, short what) {
             }
         }
     }
-    /* pthread_mutex_unlock(&bev->lock); */
     pthread_mutex_unlock(&group->lock);
 }
 
@@ -111,11 +103,9 @@ _ratelim_suspend_bev_read(ratelim_bev * bev, ratelim_group * group) {
     assert(bev != NULL);
 
     pthread_mutex_lock(&group->lock);
-    /* pthread_mutex_lock(&bev->lock); */
     {
         _ratelim_suspend_bev(bev, group, EV_READ);
     }
-    /* pthread_mutex_unlock(&bev->lock); */
     pthread_mutex_unlock(&group->lock);
 }
 
@@ -124,11 +114,9 @@ _ratelim_suspend_bev_write(ratelim_bev * bev, ratelim_group * group) {
     assert(bev != NULL);
 
     pthread_mutex_lock(&group->lock);
-    /* pthread_mutex_lock(&bev->lock); */
     {
         _ratelim_suspend_bev(bev, group, EV_WRITE);
     }
-    /* pthread_mutex_unlock(&bev->lock); */
     pthread_mutex_unlock(&group->lock);
 }
 
@@ -185,17 +173,7 @@ _ratelim_group_resume(ratelim_group * group, short what) {
     {
         group->rd_suspended = false;
 
-        FOREACH_RANDOM_ORDER({
-#if 0
-                                 pthread_mutex_lock(&bev->lock);
-#endif
-                                 {
-                                     _ratelim_resume_bev(bev, group, what);
-                                 }
-#if 0
-                                 pthread_mutex_unlock(&bev->lock);
-#endif
-                             });
+        FOREACH_RANDOM_ORDER({ _ratelim_resume_bev(bev, group, what); });
     }
     pthread_mutex_unlock(&group->lock);
 }
@@ -244,15 +222,7 @@ _ratelim_group_suspend(ratelim_group * group, short what) {
         first = TAILQ_FIRST(&group->members);
 
         for (bev = first; bev != TAILQ_END(&group->members); bev = TAILQ_NEXT(bev, next)) {
-#if 0
-            pthread_mutex_lock(&bev->lock);
-#endif
-            {
-                _ratelim_suspend_bev(bev, group, what);
-            }
-#if 0
-            pthread_mutex_unlock(&bev->lock);
-#endif
+            _ratelim_suspend_bev(bev, group, what);
         }
     }
     pthread_mutex_unlock(&group->lock);
@@ -297,33 +267,29 @@ _ratelim_refill_cb(int sock, short which, void * arg) {
          * distribution of ratelimiting across multiple threads.
          */
         t_bucket_lock(group->t_bucket);
-#if 0
-        while (t_bucket_try_lock(group->t_bucket) != 0) {
-            ;
-        }
-#endif
+        {
+            t_bucket_update(group->t_bucket);
 
-        t_bucket_update(group->t_bucket);
-
-        if (group->rd_suspended == true) {
-            if (t_bucket_get_read_limit(group->t_bucket) >= 1) {
-                _ratelim_group_resume_reading(group);
+            if (group->rd_suspended == true) {
+                if (t_bucket_get_read_limit(group->t_bucket) >= 1) {
+                    _ratelim_group_resume_reading(group);
+                }
             }
-        }
 
-        if (group->wr_suspended == true) {
-            if (t_bucket_get_write_limit(group->t_bucket) >= 1) {
-                _ratelim_group_resume_writing(group);
+            if (group->wr_suspended == true) {
+                if (t_bucket_get_write_limit(group->t_bucket) >= 1) {
+                    _ratelim_group_resume_writing(group);
+                }
             }
+
+            /* As much as I hate to do this, it actually eases up the potential hogging
+             * of the token bucket from other threads. This balances out even more due
+             * to the while(t_bucket_try_lock()) above.
+             */
+            usleep(20000);
+
+            /* since we aquired the token bucket lock above, we need to unlock it */
         }
-
-        /* As much as I hate to do this, it actually eases up the potential hogging
-         * of the token bucket from other threads. This balances out even more due
-         * to the while(t_bucket_try_lock()) above.
-         */
-        usleep(20000);
-
-        /* since we aquired the token bucket lock above, we need to unlock it */
         t_bucket_unlock(group->t_bucket);
     }
     pthread_mutex_unlock(&group->lock);
@@ -465,20 +431,12 @@ ratelim_add_bufferevent(struct bufferevent * bev, ratelim_group * group) {
 
     pthread_mutex_lock(&group->lock);
     {
-        rl_bev = _ratelim_bev_new();
+        rl_bev        = _ratelim_bev_new();
         assert(rl_bev != NULL);
 
-#if 0
-        pthread_mutex_lock(&rl_bev->lock);
-#endif
-        {
-            rl_bev->bev   = bev;
-            rl_bev->group = group;
-            ratelim_add_bev(rl_bev, group);
-        }
-#if 0
-        pthread_mutex_unlock(&rl_bev->lock);
-#endif
+        rl_bev->bev   = bev;
+        rl_bev->group = group;
+        ratelim_add_bev(rl_bev, group);
     }
     pthread_mutex_unlock(&group->lock);
 
@@ -532,8 +490,6 @@ ratelim_group_new(struct event_base * base, size_t r_rate, size_t w_rate) {
 struct bufferevent *
 ratelim_bev_get_bufferevent(ratelim_bev * bev) {
     assert(bev != NULL);
-
-    /* XXX: lock */
 
     return bev->bev;
 }

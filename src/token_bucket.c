@@ -169,9 +169,17 @@ t_bucket_cfg_get_tick_timeout(t_bucket_cfg * cfg) {
 
 struct timeval *
 t_bucket_get_tick_timeout(t_bucket * bucket) {
+    struct timeval * res;
+
     assert(bucket != NULL);
 
-    return t_bucket_cfg_get_tick_timeout(bucket->cfg);
+    pthread_mutex_lock(&bucket->lock);
+    {
+        res = t_bucket_cfg_get_tick_timeout(bucket->cfg);
+    }
+    pthread_mutex_unlock(&bucket->lock);
+
+    return res;
 }
 
 size_t
@@ -183,9 +191,17 @@ t_bucket_cfg_get_read_rate(t_bucket_cfg * cfg) {
 
 size_t
 t_bucket_get_read_rate(t_bucket * bucket) {
+    size_t res;
+
     assert(bucket != NULL);
 
-    return t_bucket_cfg_get_read_rate(bucket->cfg);
+    pthread_mutex_lock(&bucket->lock);
+    {
+        res = t_bucket_cfg_get_read_rate(bucket->cfg);
+    }
+    pthread_mutex_unlock(&bucket->lock);
+
+    return res;
 }
 
 size_t
@@ -197,16 +213,32 @@ t_bucket_cfg_get_write_rate(t_bucket_cfg * cfg) {
 
 size_t
 t_bucket_get_write_rate(t_bucket * bucket) {
+    size_t res;
+
     assert(bucket != NULL);
 
-    return t_bucket_cfg_get_write_rate(bucket->cfg);
+    pthread_mutex_lock(&bucket->lock);
+    {
+        res = t_bucket_cfg_get_write_rate(bucket->cfg);
+    }
+    pthread_mutex_unlock(&bucket->lock);
+
+    return res;
 }
 
 t_bucket_cfg *
 t_bucket_get_cfg(t_bucket * bucket) {
+    t_bucket_cfg * res;
+
     assert(bucket != NULL);
 
-    return bucket->cfg;
+    pthread_mutex_lock(&bucket->lock);
+    {
+        res = bucket->cfg;
+    }
+    pthread_mutex_unlock(&bucket->lock);
+
+    return res;
 }
 
 int
