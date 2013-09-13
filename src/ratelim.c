@@ -284,12 +284,11 @@ _ratelim_refill_cb(int sock, short which, void * arg) {
 
             /* As much as I hate to do this, it actually eases up the potential hogging
              * of the token bucket from other threads. This balances out even more due
-             * to the while(t_bucket_try_lock()) above.
+             * to the while(t_bucket_lock()) above.
              */
             usleep(20000);
-
-            /* since we aquired the token bucket lock above, we need to unlock it */
         }
+        /* since we aquired the token bucket lock above, we need to unlock it */
         t_bucket_unlock(group->t_bucket);
     }
     pthread_mutex_unlock(&group->lock);
@@ -324,7 +323,6 @@ _ratelim_group_new(struct event_base * base, t_bucket * bucket, size_t r_rate, s
     pthread_mutexattr_init(&attr);
     pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
     pthread_mutex_init(&group->lock, &attr);
-
 
     tick_timeout     = t_bucket_get_tick_timeout(group->t_bucket);
     assert(tick_timeout != NULL);
