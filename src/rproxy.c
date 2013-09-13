@@ -514,10 +514,6 @@ send_upstream_body(evhtp_request_t * upstream_req, evbuf_t * buf, void * arg) {
         ratelim_read_bev(request->upstream_rlbev, rule->rl_group, bytes_written);
     }
 
-    if (request->downstream_rlbev) {
-        ratelim_write_bev(request->downstream_rlbev, rule->rl_group, bytes_written);
-    }
-
     return EVHTP_RES_OK;
 } /* send_upstream_body */
 
@@ -1565,7 +1561,6 @@ _rl_suspendcb(ratelim_bev * rl_bev, short what, void * arg) {
 static void
 _rl_resumecb(ratelim_bev * rl_bev, short what, void * arg) {
     bufferevent_enable(ratelim_bev_get_bufferevent(rl_bev), what);
-    return;
 }
 
 static void

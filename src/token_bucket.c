@@ -282,13 +282,24 @@ t_bucket_cfg *
 t_bucket_cfg_new(size_t read_rate, size_t write_rate) {
     t_bucket_cfg * cfg;
 
-    cfg                       = calloc(sizeof(t_bucket_cfg), 1);
+    cfg = calloc(sizeof(t_bucket_cfg), 1);
     assert(cfg != NULL);
 
-    cfg->read_rate            = read_rate / 2;
-    cfg->read_max             = read_rate / 2;
-    cfg->write_rate           = write_rate / 2;
-    cfg->write_max            = write_rate / 2;
+    if (read_rate) {
+        cfg->read_rate = read_rate / 2;
+        cfg->read_max  = read_rate / 2;
+    } else {
+        cfg->read_rate = UINT_MAX;
+        cfg->read_max  = UINT_MAX;
+    }
+
+    if (write_rate) {
+        cfg->write_rate = write_rate / 2;
+        cfg->write_max  = write_rate / 2;
+    } else {
+        cfg->write_rate = UINT_MAX;
+        cfg->write_max  = UINT_MAX;
+    }
 
     cfg->tick_timeout.tv_sec  = 1;
     cfg->tick_timeout.tv_usec = 0;
