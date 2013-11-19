@@ -1474,7 +1474,10 @@ downstream_connection_readcb(evbev_t * bev, void * arg) {
 
     evbuffer_drain(evbuf, -1);
 
-    if (nread != avail) {
+    // For HEAD requests only, the 'nread' variable will be incorrect due to 
+    // hooks exiting prematurely to avoid extra processing of body when not required
+    // This validation is skipped for this reason.
+    if(request->upstream_request->method != htp_method_HEAD && nread != avail){
         /* the request processing was aborted at some point, so
          * we mark it as an error
          */
