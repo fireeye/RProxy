@@ -1589,11 +1589,21 @@ downstream_connection_retry(int sock, short which, void * arg) {
 
         sin.sin_family      = AF_INET;
         sin.sin_addr.s_addr = inet_addr(downstream->config->host);
-        sin.sin_port        = htons(downstream->config->port);
+        
+        if (sin.sin_addr.s_addr != INADDR_NONE) {
+            
+            sin.sin_port        = htons(downstream->config->port);
 
 
-        bufferevent_socket_connect(connection->connection,
-                                   (struct sockaddr *)&sin, sizeof(sin));
+            bufferevent_socket_connect(connection->connection,
+                                       (struct sockaddr *)&sin, sizeof(sin));
+        }
+        else {
+            bufferevent_socket_connect_hostname(connection->connection, 
+                                                rproxy->dns_base, AF_INET,
+                                                downstream->config->host,
+                                                downstream->config->port); 
+        }
     }
 
     {
